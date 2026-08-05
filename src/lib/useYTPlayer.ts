@@ -69,6 +69,7 @@ export function useYTPlayer(
   options: UseYTPlayerOptions
 ): YTPlayerControls {
   const playerRef = useRef<YTPlayer | null>(null);
+  const userPausedRef = useRef(false);
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -119,8 +120,8 @@ export function useYTPlayer(
         createdPlayer = new YT.Player(el, {
           videoId: options.videoId,
           playerVars: {
-            autoplay: 1,
-            mute: globalIsMuted ? 1 : 0,
+            autoplay: options.active ? 1 : 0,
+            mute: globalIsMuted || !options.active ? 1 : 0,
             controls: 0,
             modestbranding: 1,
             rel: 0,
@@ -145,10 +146,23 @@ export function useYTPlayer(
                 }
                 return;
               }
-              try {
-                e.target.setPlaybackQuality(quality);
-              } catch {
-                // ignore
+              if (!options.active) {
+                try {
+                  e.target.pauseVideo();
+                  e.target.mute();
+                } catch {
+                  // ignore
+                }
+              } else {
+                try {
+                  e.target.playVideo();
+                  if (!globalIsMuted) {
+                    e.target.unMute();
+                    e.target.setVolume(100);
+                  }
+                } catch {
+                  // ignore
+                }
               }
               setReady(true);
               onReadyRef.current?.();
@@ -161,15 +175,9 @@ export function useYTPlayer(
             },
             onStateChange: (e) => {
               if (cancelled) return;
-              try {
-                if (e.data === 1 || e.data === 3 || e.data === 5) {
-                  e.target.setPlaybackQuality(quality);
-                }
-              } catch {
-                // ignore
-              }
-              // 1: PLAYING, 2: PAUSED, 0: ENDED
+              // 1: PLAYING, 2: PAUSED, 0: ENDED, 3: BUFFERING
               if (e.data === 1) {
+                setReady(true);
                 setIsPlaying(true);
               } else if (e.data === 2 || e.data === 0) {
                 setIsPlaying(false);
@@ -219,10 +227,10 @@ export function useYTPlayer(
     const p = playerRef.current;
     if (!p || !ready) return;
     let playWatchdog: NodeJS.Timeout | null = null;
-    let preloadBufferTimer: NodeJS.Timeout | null = null;
 
     try {
       if (options.active) {
+        userPausedRef.current = false;
         p.playVideo();
         setIsPlaying(true);
         if (!globalIsMuted) {
@@ -246,21 +254,12 @@ export function useYTPlayer(
             setFailed(true);
             onErrorRef.current?.();
           }
-        }, 10000);
+        }, 8000);
       } else {
-        // Pre-buffer upcoming/previous reels in background: play briefly muted then pause
+        // Non-active videos remain paused to save network and CPU for the active short
+        p.pauseVideo();
         p.mute();
-        p.playVideo();
-        preloadBufferTimer = setTimeout(() => {
-          try {
-            if (!options.active && playerRef.current) {
-              playerRef.current.pauseVideo();
-              setIsPlaying(false);
-            }
-          } catch {
-            // ignore
-          }
-        }, 350);
+        setIsPlaying(false);
       }
     } catch {
       // ignore
@@ -268,8 +267,56 @@ export function useYTPlayer(
 
     return () => {
       if (playWatchdog) clearTimeout(playWatchdog);
-      if (preloadBufferTimer) clearTimeout(preloadBufferTimer);
     };
+  }, [options.active, ready]);
+
+  // Repeating enforcement loop: continuously verify active vs non-active player state
+  useEffect(() => {
+    if (!ready) return;
+
+    const syncState = () => {
+      const p = playerRef.current;
+      if (!p || typeof p.getPlayerState !== 'function') return;
+
+      try {
+        const state = p.getPlayerState();
+        if (options.active) {
+          if (userPausedRef.current) {
+            // User explicitly paused: keep it paused
+            if (state === 1 /* PLAYING */) {
+              p.pauseVideo();
+            }
+            setIsPlaying(false);
+          } else {
+            // User wants it playing: force play if paused/cued/unstarted
+            if (state === 2 /* PAUSED */ || state === 5 /* CUED */ || state === -1 /* UNSTARTED */) {
+              p.playVideo();
+              setIsPlaying(true);
+              if (!globalIsMuted) {
+                p.unMute();
+                p.setVolume(100);
+                setIsMuted(false);
+              }
+            } else if (state === 1 /* PLAYING */) {
+              setIsPlaying(true);
+            }
+          }
+        } else {
+          // If NOT active video, MUST BE PAUSED and MUTED
+          if (state === 1 /* PLAYING */ || state === 3 /* BUFFERING */) {
+            p.pauseVideo();
+            p.mute();
+          }
+          setIsPlaying(false);
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    syncState();
+    const interval = setInterval(syncState, 200);
+    return () => clearInterval(interval);
   }, [options.active, ready]);
 
   // Track playback time & progress percent
@@ -296,17 +343,24 @@ export function useYTPlayer(
   }, [options.active, ready]);
 
   const play = useCallback(() => {
+    userPausedRef.current = false;
     const p = playerRef.current;
     if (!p) return;
     try {
       p.playVideo();
       setIsPlaying(true);
+      if (!globalIsMuted) {
+        p.unMute();
+        p.setVolume(100);
+        setIsMuted(false);
+      }
     } catch {
       // ignore
     }
   }, []);
 
   const pause = useCallback(() => {
+    userPausedRef.current = true;
     const p = playerRef.current;
     if (!p) return;
     try {
@@ -318,25 +372,12 @@ export function useYTPlayer(
   }, []);
 
   const togglePlayPause = useCallback(() => {
-    const p = playerRef.current;
-    if (!p) return;
-    try {
-      if (isPlaying) {
-        p.pauseVideo();
-        setIsPlaying(false);
-      } else {
-        p.playVideo();
-        setIsPlaying(true);
-        if (!globalIsMuted) {
-          p.unMute();
-          p.setVolume(100);
-          setIsMuted(false);
-        }
-      }
-    } catch {
-      // ignore
+    if (userPausedRef.current || !isPlaying) {
+      play();
+    } else {
+      pause();
     }
-  }, [isPlaying]);
+  }, [isPlaying, play, pause]);
 
   const unMute = useCallback(() => {
     globalIsMuted = false;

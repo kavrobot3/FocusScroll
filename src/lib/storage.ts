@@ -18,13 +18,109 @@ export interface SessionMeta {
 const KEYS = {
   DWELL: 'fs_dwell_records',
   META: 'fs_session_meta',
+  SESSION_START_TARGET: 'fs_session_start_target',
+  SEARCH_HISTORY: 'fs_search_history',
+  THEME: 'fs_app_theme',
 };
 
-const START_TARGET = 18;
-const INCREMENT = 1.5;
+const DEFAULT_START_TARGET = 3;
+const INCREMENT = 1;
+
+export function getAppTheme(): 'dark' | 'light' {
+  return readJSON<'dark' | 'light'>(KEYS.THEME, 'dark');
+}
+
+export function setAppTheme(theme: 'dark' | 'light'): void {
+  writeJSON(KEYS.THEME, theme);
+  if (theme === 'light') {
+    document.documentElement.classList.add('light');
+  } else {
+    document.documentElement.classList.remove('light');
+  }
+}
+
+export function initAppTheme(): void {
+  const theme = getAppTheme();
+  setAppTheme(theme);
+}
+
+export function getSessionStartTarget(): number {
+  const val = readJSON<number | null>(KEYS.SESSION_START_TARGET, null);
+  if (val === null || typeof val !== 'number' || val < 3) return DEFAULT_START_TARGET;
+  return val;
+}
+
+export function setSessionStartTarget(target: number): void {
+  const safe = Math.max(3, Math.round(target));
+  writeJSON(KEYS.SESSION_START_TARGET, safe);
+}
+
+export function recordSessionEndTarget(lastVideoIndex: number): void {
+  const currentStart = getSessionStartTarget();
+  const endingTarget = currentStart + lastVideoIndex * INCREMENT;
+  // Decrease by 10 for the next session continuation, minimum 3s
+  const nextStart = Math.max(3, Math.round(endingTarget - 10));
+  setSessionStartTarget(nextStart);
+}
+
+export function getCalibrationAverage(): number {
+  const records = getDwellRecords();
+  // Examine the first six scrolls for the user's average attention span
+  const firstSix = records.slice(0, 6);
+  if (firstSix.length === 0) return DEFAULT_START_TARGET;
+  const sum = firstSix.reduce((s, r) => s + r.dwellSeconds, 0);
+  const avg = sum / firstSix.length;
+  return Math.max(3, Math.round(avg * 10) / 10);
+}
+
+export function isCalibrated(): boolean {
+  return getDwellRecords().length >= 6;
+}
 
 export function getTargetDuration(videoIndex: number): number {
-  return START_TARGET + videoIndex * INCREMENT;
+  if (videoIndex < 6) {
+    // 6-video calibration phase (videos 1-6)
+    return getSessionStartTarget();
+  }
+  // Forced minimum-watch gate from video 7 onwards:
+  // Starts at the calibrated average attention span from the first six scrolls
+  const calAvg = getCalibrationAverage();
+  return Math.round(calAvg + (videoIndex - 5) * INCREMENT);
+}
+
+export function getStoredSearches(): string[] {
+  return readJSON<string[]>(KEYS.SEARCH_HISTORY, []);
+}
+
+export function addStoredSearch(query: string): void {
+  const clean = query.trim();
+  if (!clean) return;
+  const existing = getStoredSearches();
+  const filtered = existing.filter((q) => q.toLowerCase() !== clean.toLowerCase());
+  const updated = [clean, ...filtered].slice(0, 30);
+  writeJSON(KEYS.SEARCH_HISTORY, updated);
+}
+
+export function removeStoredSearch(query: string): void {
+  const existing = getStoredSearches();
+  const updated = existing.filter((q) => q.toLowerCase() !== query.toLowerCase().trim());
+  writeJSON(KEYS.SEARCH_HISTORY, updated);
+}
+
+export function saveStoredSearches(searches: string[]): void {
+  const cleaned = searches.map((s) => s.trim()).filter(Boolean);
+  const unique = Array.from(new Set(cleaned));
+  writeJSON(KEYS.SEARCH_HISTORY, unique);
+}
+
+export function clearSearchHistory(): void {
+  localStorage.removeItem(KEYS.SEARCH_HISTORY);
+}
+
+export function getShuffledStoredSearches(): string[] {
+  const searches = getStoredSearches();
+  if (searches.length === 0) return [];
+  return [...searches].sort(() => Math.random() - 0.5);
 }
 
 function readJSON<T>(key: string, fallback: T): T {

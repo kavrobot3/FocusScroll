@@ -1,7 +1,20 @@
 import { useState, useEffect } from 'react';
 import { ArrowRight, X } from 'lucide-react';
-import { getYouTubeApiKey, isQuotaExhausted, getCachedVideos, getCacheAge } from '@/lib/youtube';
-import { getRecentDwellRecords, getAverageDwell, getWeeklyGrowthSeconds } from '@/lib/storage';
+import {
+  getYouTubeApiKey,
+  isQuotaExhausted,
+  getCachedVideos,
+  getCacheAge,
+  getLastApiError,
+} from '@/lib/youtube';
+import {
+  getRecentDwellRecords,
+  getAverageDwell,
+  getWeeklyGrowthSeconds,
+  getCalibrationAverage,
+  isCalibrated,
+  getDwellRecords,
+} from '@/lib/storage';
 
 interface Props {
   onEnterFeed: () => void;
@@ -82,29 +95,36 @@ function DebugPanel({ onClose }: { onClose: () => void }) {
   const cachedVideos = getCachedVideos();
   const cacheAge = getCacheAge();
   const recentDwell = getRecentDwellRecords(5);
+  const lastError = getLastApiError();
+  const calibrated = isCalibrated();
+  const calAvg = getCalibrationAverage();
+  const recordCount = getDwellRecords().length;
 
   let status: string;
   let statusColor: string;
   if (!apiKey) {
-    status = 'No API key set';
+    status = 'No VITE_YOUTUBE_API_KEY';
     statusColor = 'text-amber-400';
   } else if (quotaExhausted) {
-    status = 'Quota exhausted (403)';
+    status = 'Quota exhausted / Forbidden';
     statusColor = 'text-red-400';
   } else if (cachedVideos && cachedVideos.length > 0) {
     const ageMin = cacheAge ? Math.round(cacheAge / 60000) : 0;
     status = `Cached ${cachedVideos.length} videos (${ageMin}m ago)`;
     statusColor = 'text-cyan-400';
   } else {
-    status = 'Key present, no cache yet';
+    status = 'Key present, fetching directly...';
     statusColor = 'text-white/60';
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in">
-      <div className="mx-6 w-full max-w-[320px] rounded-2xl border border-white/10 bg-ink-850 p-5">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md animate-fade-in">
+      <div className="mx-6 w-full max-w-[340px] rounded-2xl border border-white/20 bg-ink-850 p-5 shadow-2xl">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-sm font-semibold text-white">Debug</h2>
+          <h2 className="text-sm font-bold text-white flex items-center gap-2">
+            <span className="h-2 w-2 rounded-full bg-cyan-400 animate-pulse" />
+            <span>Judge Mode / Debug</span>
+          </h2>
           <button onClick={onClose} className="text-white/40 hover:text-white/80">
             <X size={18} />
           </button>
@@ -112,24 +132,35 @@ function DebugPanel({ onClose }: { onClose: () => void }) {
 
         <div className="space-y-3 text-xs">
           <div>
-            <span className="text-white/40">API status: </span>
+            <span className="text-white/40">API Status: </span>
             <span className={statusColor}>{status}</span>
           </div>
+
           <div>
-            <span className="text-white/40">API key: </span>
-            <span className="text-white/70 font-mono">
-              {apiKey ? `${apiKey.slice(0, 6)}…${apiKey.slice(-4)}` : '—'}
+            <span className="text-white/40">Calibration: </span>
+            <span className="text-cyan-300 font-medium">
+              {calibrated
+                ? `Completed (${calAvg}s avg)`
+                : `In progress (${recordCount}/6 scrolls)`}
             </span>
           </div>
+
+          {lastError && (
+            <div className="rounded-lg bg-red-500/10 border border-red-500/20 p-2 text-[11px] text-red-300 break-words font-mono">
+              <span className="font-bold text-red-400 block mb-0.5">Last Raw API Error:</span>
+              {lastError}
+            </div>
+          )}
+
           <div>
-            <span className="text-white/40">Videos loaded: </span>
+            <span className="text-white/40">Cached videos: </span>
             <span className="text-white/70">{cachedVideos?.length ?? 0}</span>
           </div>
 
           <div className="pt-2 border-t border-white/10">
-            <div className="text-white/40 mb-2">Last 5 real dwell records:</div>
+            <div className="text-white/40 mb-2">Last 5 Dwell Records:</div>
             {recentDwell.length === 0 ? (
-              <div className="text-white/30 italic">No real records yet</div>
+              <div className="text-white/30 italic">No dwell records yet</div>
             ) : (
               <div className="space-y-1 font-mono text-[10px]">
                 {recentDwell.map((r, i) => (
@@ -146,4 +177,5 @@ function DebugPanel({ onClose }: { onClose: () => void }) {
     </div>
   );
 }
+
 

@@ -3,7 +3,7 @@ import { Home, PlayCircle, BarChart3 } from 'lucide-react';
 import HomePage from '@/pages/HomePage';
 import ShortsFeed from '@/pages/ShortsFeed';
 import StatsPage from '@/pages/StatsPage';
-import { seedData } from '@/lib/storage';
+import { seedData, initAppTheme } from '@/lib/storage';
 import { initNetworkSpeedDetection } from '@/lib/network';
 import { loadYouTubeAPI } from '@/lib/useYTPlayer';
 import { fetchYouTubeVideos } from '@/lib/youtube';
@@ -15,6 +15,7 @@ export default function App() {
   const [inFeed, setInFeed] = useState(false);
 
   useEffect(() => {
+    initAppTheme();
     seedData();
     // Warm up network detection, YouTube API script & fetch initial video batch on app startup
     initNetworkSpeedDetection();

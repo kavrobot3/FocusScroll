@@ -1,100 +1,115 @@
 export interface YTVideo {
+  id: string;
   videoId: string;
   title: string;
+  channelTitle: string;
   channel: string;
   durationSec: number;
   thumbnail: string;
+  embeddable?: boolean;
 }
 
 interface CacheEntry {
   videos: YTVideo[];
-  fetchedAt: number;
+  timestamp: number;
 }
 
-const CACHE_KEY = 'fs_yt_cache_session_v2';
-const QUOTA_KEY = 'fs_yt_quota_error';
+const CACHE_PREFIX = 'yt_cache_';
+const CACHE_EXPIRY_MS = 6 * 60 * 60 * 1000; // 6 hours
 
-const SEARCH_QUERIES = [
-  'shorts nature',
-  'shorts cooking',
-  'shorts animals',
-  'shorts sports',
-  'shorts diy',
-  'shorts science',
-  'asmr shorts',
-  'travel shorts',
-  'shorts fitness',
-  'shorts gaming',
-  'shorts technology',
-  'shorts art',
-  'shorts satisfying',
-  'shorts music',
-];
+let lastRawError: string | null = null;
+
+export function getLastApiError(): string | null {
+  return lastRawError;
+}
+
+export function setLastApiError(err: string | null): void {
+  lastRawError = err;
+}
 
 export function getYouTubeApiKey(): string | undefined {
-  return import.meta.env.VITE_YOUTUBE_API_KEY;
+  const envKey = import.meta.env.VITE_YOUTUBE_API_KEY || import.meta.env.YOUTUBE_API_KEY;
+  if (envKey && envKey.trim()) return envKey.trim();
+  try {
+    const localKey = localStorage.getItem('user_yt_api_key');
+    if (localKey && localKey.trim()) return localKey.trim();
+  } catch {
+    // ignore
+  }
+  return undefined;
+}
+
+export function setYouTubeApiKey(key: string): void {
+  try {
+    if (key && key.trim()) {
+      localStorage.setItem('user_yt_api_key', key.trim());
+      lastRawError = null;
+    } else {
+      localStorage.removeItem('user_yt_api_key');
+    }
+  } catch {
+    // ignore
+  }
 }
 
 export function isQuotaExhausted(): boolean {
-  try {
-    return sessionStorage.getItem(QUOTA_KEY) === '1' || localStorage.getItem(QUOTA_KEY) === '1';
-  } catch {
-    return false;
-  }
-}
-
-function setQuotaExhausted(): void {
-  try {
-    sessionStorage.setItem(QUOTA_KEY, '1');
-  } catch {
-    // ignore
-  }
+  if (!lastRawError) return false;
+  return lastRawError.includes('403') || lastRawError.toLowerCase().includes('quota');
 }
 
 export function clearQuotaFlag(): void {
-  try {
-    sessionStorage.removeItem(QUOTA_KEY);
-    localStorage.removeItem(QUOTA_KEY);
-    localStorage.removeItem('fs_yt_cache_v1');
-  } catch {
-    // ignore
-  }
+  lastRawError = null;
 }
 
-function readCache(): CacheEntry | null {
-  try {
-    // Clean up any legacy localStorage cache
-    localStorage.removeItem('fs_yt_cache_v1');
+function normalizeQueryKey(query: string): string {
+  return CACHE_PREFIX + query.trim().toLowerCase().replace(/[^a-z0-9]/g, '_');
+}
 
-    const raw = sessionStorage.getItem(CACHE_KEY);
+function getQueryCache(query: string): YTVideo[] | null {
+  try {
+    const key = normalizeQueryKey(query);
+    const raw = localStorage.getItem(key);
     if (!raw) return null;
     const entry = JSON.parse(raw) as CacheEntry;
-    if (!entry.videos || entry.videos.length === 0) return null;
-    return entry;
+    if (!entry || !entry.videos || !Array.isArray(entry.videos)) return null;
+    if (Date.now() - entry.timestamp > CACHE_EXPIRY_MS) {
+      localStorage.removeItem(key);
+      return null;
+    }
+    return entry.videos;
   } catch {
     return null;
   }
 }
 
-function writeCache(videos: YTVideo[]): void {
+function setQueryCache(query: string, videos: YTVideo[]): void {
   try {
-    sessionStorage.setItem(CACHE_KEY, JSON.stringify({ videos, fetchedAt: Date.now() }));
+    const key = normalizeQueryKey(query);
+    const entry: CacheEntry = { videos, timestamp: Date.now() };
+    localStorage.setItem(key, JSON.stringify(entry));
   } catch {
-    // ignore
+    // ignore storage error
   }
 }
 
 export function getCachedVideos(): YTVideo[] | null {
-  const cache = readCache();
-  return cache ? cache.videos : null;
+  return getQueryCache('default_feed') || getQueryCache('shorts');
 }
 
 export function getCacheAge(): number | null {
-  const cache = readCache();
-  return cache ? Date.now() - cache.fetchedAt : null;
+  try {
+    const key = normalizeQueryKey('default_feed');
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const entry = JSON.parse(raw) as CacheEntry;
+    return entry ? Date.now() - entry.timestamp : null;
+  } catch {
+    return null;
+  }
 }
 
 function parseISODuration(iso: string): number {
+  if (!iso) return 0;
   const m = iso.match(/^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/);
   if (!m) return 0;
   const h = parseInt(m[1] || '0', 10);
@@ -103,58 +118,84 @@ function parseISODuration(iso: string): number {
   return h * 3600 + min * 60 + s;
 }
 
-async function searchVideos(apiKey: string, query: string): Promise<string[]> {
+async function searchVideoIds(apiKey: string, query: string): Promise<string[]> {
   const url =
     `https://www.googleapis.com/youtube/v3/search` +
-    `?part=id&type=video&videoDuration=short&videoDimension=2d` +
-    `&maxResults=50&q=${encodeURIComponent(query)}&key=${apiKey}`;
+    `?part=snippet` +
+    `&type=video` +
+    `&videoEmbeddable=true` +
+    `&videoSyndicated=true` +
+    `&safeSearch=strict` +
+    `&maxResults=25` +
+    `&q=${encodeURIComponent(query)}` +
+    `&key=${apiKey}`;
 
   const res = await fetch(url);
   if (!res.ok) {
-    if (res.status === 403) setQuotaExhausted();
-    throw new Error(`search.list failed: ${res.status}`);
+    const statusText = res.statusText || '';
+    let bodyText = '';
+    try {
+      const errData = await res.json();
+      bodyText = errData?.error?.message || JSON.stringify(errData);
+    } catch {
+      // ignore
+    }
+    const errMsg = `search.list failed: ${res.status} ${statusText} - ${bodyText}`.trim();
+    lastRawError = errMsg;
+    throw new Error(errMsg);
   }
+
   const data = await res.json();
   const ids: string[] = [];
   for (const item of data.items || []) {
-    if (item.id && item.id.videoId) ids.push(item.id.videoId);
+    if (item.id && item.id.videoId) {
+      ids.push(item.id.videoId);
+    }
   }
   return ids;
 }
 
 async function fetchVideoDetails(apiKey: string, ids: string[]): Promise<YTVideo[]> {
   if (ids.length === 0) return [];
-  const chunks: string[][] = [];
-  for (let i = 0; i < ids.length; i += 50) {
-    chunks.push(ids.slice(i, i + 50));
+  const url =
+    `https://www.googleapis.com/youtube/v3/videos` +
+    `?part=contentDetails,snippet,status` +
+    `&id=${ids.join(',')}` +
+    `&key=${apiKey}`;
+
+  const res = await fetch(url);
+  if (!res.ok) {
+    const errMsg = `videos.list failed: ${res.status} ${res.statusText}`.trim();
+    lastRawError = errMsg;
+    throw new Error(errMsg);
   }
+
+  const data = await res.json();
   const results: YTVideo[] = [];
-  for (const chunk of chunks) {
-    const url =
-      `https://www.googleapis.com/youtube/v3/videos` +
-      `?part=contentDetails,snippet,statistics` +
-      `&id=${chunk.join(',')}&key=${apiKey}`;
-    const res = await fetch(url);
-    if (!res.ok) {
-      if (res.status === 403) setQuotaExhausted();
-      throw new Error(`videos.list failed: ${res.status}`);
-    }
-    const data = await res.json();
-    for (const item of data.items || []) {
-      const dur = parseISODuration(item.contentDetails?.duration || '');
-      const thumb =
-        item.snippet?.thumbnails?.medium?.url ||
-        item.snippet?.thumbnails?.default?.url ||
-        '';
-      results.push({
-        videoId: item.id,
-        title: item.snippet?.title || '',
-        channel: item.snippet?.channelTitle || '',
-        durationSec: dur,
-        thumbnail: thumb,
-      });
-    }
+
+  for (const item of data.items || []) {
+    const dur = parseISODuration(item.contentDetails?.duration || '');
+    const thumb =
+      item.snippet?.thumbnails?.medium?.url ||
+      item.snippet?.thumbnails?.default?.url ||
+      '';
+
+    const isEmbeddable = item.status?.embeddable !== false;
+    const title = item.snippet?.title || 'Short Video';
+    const channelName = item.snippet?.channelTitle || 'YouTube Creator';
+
+    results.push({
+      id: item.id,
+      videoId: item.id,
+      title,
+      channelTitle: channelName,
+      channel: channelName,
+      durationSec: dur,
+      thumbnail: thumb,
+      embeddable: isEmbeddable,
+    });
   }
+
   return results;
 }
 
@@ -163,44 +204,70 @@ export interface FetchResult {
   error: string | null;
 }
 
-export async function fetchYouTubeVideos(): Promise<FetchResult> {
-  const apiKey = getYouTubeApiKey();
-  if (!apiKey) return { videos: [], error: 'No API key' };
-  if (isQuotaExhausted()) return { videos: [], error: 'Quota exhausted' };
+import { getShuffledStoredSearches } from './storage';
 
-  const cached = readCache();
-  if (cached) return { videos: cached.videos, error: null };
+export async function fetchYouTubeVideos(customQuery?: string): Promise<FetchResult> {
+  const storedSearches = getShuffledStoredSearches();
+  const activeQuery =
+    customQuery ||
+    (storedSearches.length > 0 ? storedSearches[0] : 'shorts');
+
+  // Check 6-hour localStorage cache first
+  const cached = getQueryCache(activeQuery);
+  if (cached && cached.length > 0) {
+    return { videos: cached, error: null };
+  }
+
+  const apiKey = getYouTubeApiKey();
+  if (!apiKey) {
+    const err = 'No VITE_YOUTUBE_API_KEY environment variable configured';
+    lastRawError = err;
+    return { videos: [], error: err };
+  }
 
   try {
-    const allIds = new Set<string>();
-    // Pick 5 random search queries each session for variety
-    const shuffledQueries = [...SEARCH_QUERIES].sort(() => Math.random() - 0.5).slice(0, 5);
-    for (const q of shuffledQueries) {
-      try {
-        const ids = await searchVideos(apiKey, q);
-        ids.forEach((id) => allIds.add(id));
-      } catch {
-        // continue with other queries
-      }
+    const ids = await searchVideoIds(apiKey, activeQuery);
+    if (ids.length === 0) {
+      const err = `No video results found for query "${activeQuery}"`;
+      lastRawError = err;
+      return { videos: [], error: err };
     }
-    if (allIds.size === 0) return { videos: [], error: 'No results from any query' };
 
-    const details = await fetchVideoDetails(apiKey, Array.from(allIds));
+    const details = await fetchVideoDetails(apiKey, ids);
 
-    const filtered = details
-      .filter((v) => v.durationSec >= 8 && v.durationSec <= 90)
-      .sort((a, b) => a.durationSec - b.durationSec);
+    // Filter embeddable videos between 8 and 90 seconds
+    let filtered = details.filter(
+      (v) => v.embeddable !== false && v.durationSec >= 8 && v.durationSec <= 90
+    );
 
-    if (filtered.length === 0) return { videos: [], error: 'No videos in 8-90s range' };
+    // If 8-90s range is empty, relax to 3-300s
+    if (filtered.length === 0) {
+      filtered = details.filter(
+        (v) => v.embeddable !== false && v.durationSec >= 3 && v.durationSec <= 300
+      );
+    }
 
-    writeCache(filtered);
+    // Sort ascending by duration
+    filtered.sort((a, b) => a.durationSec - b.durationSec);
+
+    if (filtered.length === 0) {
+      const err = `No suitable videos found for query "${activeQuery}"`;
+      lastRawError = err;
+      return { videos: [], error: err };
+    }
+
+    // Cache valid results in localStorage for 6 hours
+    setQueryCache(activeQuery, filtered);
+    lastRawError = null;
     return { videos: filtered, error: null };
   } catch (err) {
-    return { videos: [], error: err instanceof Error ? err.message : 'Unknown error' };
+    const errMsg = err instanceof Error ? err.message : 'Failed to fetch YouTube videos';
+    lastRawError = errMsg;
+    return { videos: [], error: errMsg };
   }
 }
 
-export function buildFeedQueue(videos: YTVideo[], startTarget: number = 18, increment: number = 1.5): YTVideo[] {
+export function buildFeedQueue(videos: YTVideo[], startTarget: number = 3, increment: number = 1): YTVideo[] {
   if (videos.length === 0) return [];
   const sorted = [...videos].sort((a, b) => a.durationSec - b.durationSec);
   const queue: YTVideo[] = [];

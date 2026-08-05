@@ -1,5 +1,20 @@
 import { useMemo, useState } from 'react';
-import { TrendingUp, MousePointerClick, Clock, Eye, Play, RotateCcw } from 'lucide-react';
+import {
+  TrendingUp,
+  MousePointerClick,
+  Clock,
+  Eye,
+  Play,
+  RotateCcw,
+  Settings,
+  Sun,
+  Moon,
+  Search,
+  Trash2,
+  Plus,
+  ChevronDown,
+  X,
+} from 'lucide-react';
 import {
   getAverageDwell,
   getFirstDwell,
@@ -8,11 +23,26 @@ import {
   getPeriodAverages,
   getSessionChartData,
   resetSession,
+  getStoredSearches,
+  removeStoredSearch,
+  addStoredSearch,
+  clearSearchHistory,
+  getAppTheme,
+  setAppTheme,
 } from '@/lib/storage';
 
 export default function StatsPage() {
+  const [optionsOpen, setOptionsOpen] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
+  const [searchHistoryOpen, setSearchHistoryOpen] = useState(false);
+  const [newTopic, setNewTopic] = useState('');
+  const [currentTheme, setCurrentTheme] = useState<'dark' | 'light'>(() => getAppTheme());
   const [version, setVersion] = useState(0);
+
+  const searches = useMemo(() => {
+    return getStoredSearches();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [version, searchHistoryOpen]);
 
   const data = useMemo(() => {
     const meta = getMeta();
@@ -32,14 +62,40 @@ export default function StatsPage() {
 
   const handleReset = () => {
     resetSession();
+    clearSearchHistory();
     setVersion((v) => v + 1);
     setResetOpen(false);
+    setOptionsOpen(false);
+  };
+
+  const handleToggleTheme = () => {
+    const nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
+    setAppTheme(nextTheme);
+    setCurrentTheme(nextTheme);
+  };
+
+  const handleRemoveSearch = (query: string) => {
+    removeStoredSearch(query);
+    setVersion((v) => v + 1);
+  };
+
+  const handleAddSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTopic.trim()) return;
+    addStoredSearch(newTopic.trim());
+    setNewTopic('');
+    setVersion((v) => v + 1);
+  };
+
+  const handleClearSearches = () => {
+    clearSearchHistory();
+    setVersion((v) => v + 1);
   };
 
   const hasData = data.meta.totalSwipes > 0 || data.avgDwell > 0;
 
   return (
-    <div className="h-full overflow-y-auto scrollbar-hide px-5 pt-14 pb-20">
+    <div className="h-full overflow-y-auto scrollbar-hide px-5 pt-14 pb-24">
       {/* Hero stat */}
       <div className="animate-fade-up">
         <div className="text-xs font-medium uppercase tracking-widest text-white/40">
@@ -137,36 +193,192 @@ export default function StatsPage() {
         </div>
       </div>
 
-      {/* Reset Data */}
-      <div className="mt-10 mb-4 flex justify-center">
-        {!resetOpen ? (
-          <button
-            onClick={() => setResetOpen(true)}
-            className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-ink-800 px-3.5 py-2 text-xs font-medium text-white/40 hover:text-white/80 hover:bg-ink-700 transition"
-          >
-            <RotateCcw size={14} />
-            <span>Reset All Data</span>
-          </button>
-        ) : (
-          <div className="flex flex-col items-center gap-2.5 rounded-2xl border border-red-500/20 bg-ink-850 p-4">
-            <span className="text-xs text-white/70 font-medium">Clear all recorded watch history & stats?</span>
-            <div className="flex gap-3">
-              <button
-                onClick={handleReset}
-                className="rounded-lg bg-red-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-red-500 transition shadow-lg shadow-red-600/30"
-              >
-                Yes, Reset Data
-              </button>
-              <button
-                onClick={() => setResetOpen(false)}
-                className="rounded-lg bg-white/10 px-4 py-1.5 text-xs font-medium text-white/70 hover:text-white transition"
-              >
-                Cancel
-              </button>
-            </div>
+      {/* Options Dropdown Menu & Settings */}
+      <div className="relative mt-10 mb-8 flex justify-center">
+        <button
+          onClick={() => setOptionsOpen((prev) => !prev)}
+          className="flex items-center gap-2 rounded-xl border border-white/10 bg-ink-800 px-4 py-2.5 text-xs font-semibold text-white/80 hover:text-white hover:bg-ink-700 transition active:scale-95 shadow-lg"
+        >
+          <Settings size={15} className="text-cyan-400" />
+          <span>Options</span>
+          <ChevronDown size={14} className={`text-white/40 transition-transform duration-200 ${optionsOpen ? 'rotate-180' : ''}`} />
+        </button>
+
+        {/* Dropdown Menu */}
+        {optionsOpen && (
+          <div className="absolute bottom-12 z-50 w-64 rounded-2xl border border-white/15 bg-ink-900/95 p-2 shadow-2xl backdrop-blur-xl animate-fade-in flex flex-col gap-1">
+            {/* Theme Toggle */}
+            <button
+              onClick={() => {
+                handleToggleTheme();
+                setOptionsOpen(false);
+              }}
+              className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-xs font-medium text-white/80 hover:bg-white/10 hover:text-white transition"
+            >
+              <div className="flex items-center gap-2.5">
+                {currentTheme === 'dark' ? <Moon size={15} className="text-cyan-400" /> : <Sun size={15} className="text-amber-400" />}
+                <span>Appearance</span>
+              </div>
+              <span className="text-[10px] uppercase font-bold text-white/40 bg-white/5 px-2 py-0.5 rounded-full">
+                {currentTheme}
+              </span>
+            </button>
+
+            {/* Manage Search History */}
+            <button
+              onClick={() => {
+                setSearchHistoryOpen(true);
+                setOptionsOpen(false);
+              }}
+              className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-xs font-medium text-white/80 hover:bg-white/10 hover:text-white transition"
+            >
+              <div className="flex items-center gap-2.5">
+                <Search size={15} className="text-cyan-400" />
+                <span>Search History</span>
+              </div>
+              <span className="text-[10px] text-white/40">
+                {searches.length} {searches.length === 1 ? 'topic' : 'topics'}
+              </span>
+            </button>
+
+            <div className="my-1 h-[1px] bg-white/10" />
+
+            {/* Reset All Data (Red) */}
+            <button
+              onClick={() => {
+                setResetOpen(true);
+                setOptionsOpen(false);
+              }}
+              className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-xs font-semibold text-red-400 hover:bg-red-500/15 hover:text-red-300 transition"
+            >
+              <RotateCcw size={15} />
+              <span>Reset All Data</span>
+            </button>
           </div>
         )}
       </div>
+
+      {/* Modal: Reset Confirmation */}
+      {resetOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in"
+          onClick={() => setResetOpen(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-xs rounded-2xl border border-red-500/30 bg-ink-900 p-5 shadow-2xl flex flex-col items-center text-center gap-3"
+          >
+            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-red-500/20 text-red-400">
+              <RotateCcw size={22} />
+            </div>
+            <h3 className="text-sm font-semibold text-white">Reset All App Data?</h3>
+            <p className="text-xs text-white/60 leading-relaxed">
+              This will permanently clear your attention span statistics, watch history, and saved search topics.
+            </p>
+            <div className="mt-2 flex w-full gap-2">
+              <button
+                onClick={() => setResetOpen(false)}
+                className="flex-1 rounded-xl bg-white/10 py-2 text-xs font-medium text-white/80 hover:text-white transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleReset}
+                className="flex-1 rounded-xl bg-red-600 py-2 text-xs font-semibold text-white hover:bg-red-500 transition shadow-lg shadow-red-600/30"
+              >
+                Yes, Reset
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Manage Search History */}
+      {searchHistoryOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in"
+          onClick={() => setSearchHistoryOpen(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-sm rounded-2xl border border-white/15 bg-ink-900 p-5 shadow-2xl flex flex-col gap-4 text-white"
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold flex items-center gap-2">
+                <Search size={16} className="text-cyan-400" />
+                <span>Manage Search History</span>
+              </h3>
+              <button
+                onClick={() => setSearchHistoryOpen(false)}
+                className="p-1 text-white/60 hover:text-white"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Add custom search topic */}
+            <form onSubmit={handleAddSearch} className="flex gap-2">
+              <input
+                type="text"
+                value={newTopic}
+                onChange={(e) => setNewTopic(e.target.value)}
+                placeholder="Add new topic (e.g. physics)..."
+                className="w-full rounded-xl bg-black/50 px-3 py-2 text-xs text-white border border-white/20 focus:outline-none focus:border-cyan-400"
+              />
+              <button
+                type="submit"
+                className="flex items-center gap-1 rounded-xl bg-cyan-500 px-3 py-2 text-xs font-semibold text-black transition hover:bg-cyan-400 shrink-0"
+              >
+                <Plus size={14} />
+                <span>Add</span>
+              </button>
+            </form>
+
+            {/* Searches List */}
+            <div className="max-h-56 overflow-y-auto scrollbar-hide flex flex-col gap-1.5 pr-1">
+              {searches.length === 0 ? (
+                <div className="py-6 text-center text-xs text-white/40 italic">
+                  No search history saved yet.
+                </div>
+              ) : (
+                searches.map((query) => (
+                  <div
+                    key={query}
+                    className="flex items-center justify-between rounded-xl bg-white/5 px-3 py-2 text-xs text-white/90 border border-white/5"
+                  >
+                    <span className="truncate">{query}</span>
+                    <button
+                      onClick={() => handleRemoveSearch(query)}
+                      className="text-white/40 hover:text-red-400 transition p-1 shrink-0"
+                      title="Delete topic"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {searches.length > 0 && (
+              <div className="pt-2 border-t border-white/10 flex justify-between items-center">
+                <button
+                  onClick={handleClearSearches}
+                  className="text-xs text-red-400 hover:text-red-300 font-medium flex items-center gap-1"
+                >
+                  <Trash2 size={13} />
+                  <span>Clear All History</span>
+                </button>
+                <button
+                  onClick={() => setSearchHistoryOpen(false)}
+                  className="rounded-xl bg-white/10 px-4 py-1.5 text-xs font-semibold text-white hover:bg-white/20"
+                >
+                  Done
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

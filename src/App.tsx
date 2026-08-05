@@ -4,6 +4,9 @@ import HomePage from '@/pages/HomePage';
 import ShortsFeed from '@/pages/ShortsFeed';
 import StatsPage from '@/pages/StatsPage';
 import { seedData } from '@/lib/storage';
+import { initNetworkSpeedDetection } from '@/lib/network';
+import { loadYouTubeAPI } from '@/lib/useYTPlayer';
+import { fetchYouTubeVideos } from '@/lib/youtube';
 
 type Tab = 'home' | 'feed' | 'stats';
 
@@ -13,6 +16,18 @@ export default function App() {
 
   useEffect(() => {
     seedData();
+    // Warm up network detection, YouTube API script & fetch initial video batch on app startup
+    initNetworkSpeedDetection();
+    loadYouTubeAPI();
+    fetchYouTubeVideos().then(({ videos }) => {
+      // Pre-fetch poster thumbnails for first 5 videos
+      videos.slice(0, 5).forEach((v) => {
+        if (v.thumbnail) {
+          const img = new Image();
+          img.src = v.thumbnail;
+        }
+      });
+    });
   }, []);
 
   const enterFeed = () => {
@@ -25,15 +40,9 @@ export default function App() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#050506] py-0">
-      {/* Phone frame */}
-      <div className="relative h-screen w-full max-w-[390px] overflow-hidden bg-ink-950 sm:h-[844px] sm:my-4 sm:rounded-[44px] sm:border-[10px] sm:border-[#1a1a1c] sm:shadow-2xl">
-        {/* Notch */}
-        <div className="absolute left-1/2 top-0 z-50 hidden h-7 w-32 -translate-x-1/2 rounded-b-2xl bg-[#1a1a1c] sm:block" />
-
-        {/* Status bar spacer */}
-        <div className="absolute top-0 left-0 right-0 h-11 z-30 pointer-events-none" />
-
+    <div className="flex h-screen w-full justify-center bg-[#050506] overflow-hidden">
+      {/* Responsive screen container */}
+      <div className="relative h-full w-full max-w-md sm:max-w-lg md:max-w-xl overflow-hidden bg-ink-950 shadow-2xl">
         {/* Content */}
         <div className="relative h-full w-full">
           {inFeed ? (

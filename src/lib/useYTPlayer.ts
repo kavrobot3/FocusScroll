@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { getRecommendedQuality } from '@/lib/network';
 
 let apiPromise: Promise<typeof window.YT> | null = null;
 let globalIsMuted = false; // default to false so sound plays as soon as unmuted / active
 
-function loadYouTubeAPI(): Promise<typeof window.YT> {
+export function loadYouTubeAPI(): Promise<typeof window.YT> {
   if (typeof window !== 'undefined' && window.YT && window.YT.Player) {
     return Promise.resolve(window.YT);
   }
@@ -114,6 +115,7 @@ export function useYTPlayer(
         containerEl.innerHTML = '';
         containerEl.appendChild(el);
 
+        const quality = getRecommendedQuality();
         createdPlayer = new YT.Player(el, {
           videoId: options.videoId,
           playerVars: {
@@ -128,6 +130,7 @@ export function useYTPlayer(
             disablekb: 1,
             iv_load_policy: 3,
             loop: 1,
+            suggestedQuality: quality,
             playlist: options.videoId,
           },
           events: {
@@ -142,6 +145,11 @@ export function useYTPlayer(
                 }
                 return;
               }
+              try {
+                e.target.setPlaybackQuality(quality);
+              } catch {
+                // ignore
+              }
               setReady(true);
               onReadyRef.current?.();
             },
@@ -153,6 +161,13 @@ export function useYTPlayer(
             },
             onStateChange: (e) => {
               if (cancelled) return;
+              try {
+                if (e.data === 1 || e.data === 3 || e.data === 5) {
+                  e.target.setPlaybackQuality(quality);
+                }
+              } catch {
+                // ignore
+              }
               // 1: PLAYING, 2: PAUSED, 0: ENDED
               if (e.data === 1) {
                 setIsPlaying(true);

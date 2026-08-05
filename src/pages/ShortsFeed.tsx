@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { ChevronLeft, Play, Pause, Volume2, VolumeX, ExternalLink } from 'lucide-react';
+import { ChevronLeft, Volume2, VolumeX, ExternalLink } from 'lucide-react';
 import VIDEOS from '@/lib/videos';
 import {
   getTargetDuration,
@@ -213,7 +213,7 @@ export default function ShortsFeed({ onExit }: Props) {
                   video={video}
                   index={i}
                   active={i === activeIndex}
-                  windowed={Math.abs(i - activeIndex) <= 2}
+                  windowed={i >= activeIndex - 1 && i <= activeIndex + 3}
                   gradientSeed={i % 5}
                   onAutoAdvance={handleAutoAdvance}
                 />
@@ -270,7 +270,6 @@ interface YTSlideProps {
 function YouTubeSlide({ video, index, active, windowed, gradientSeed, onAutoAdvance }: YTSlideProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [autoSkipped, setAutoSkipped] = useState(false);
-  const [centerIcon, setCenterIcon] = useState<'play' | 'pause' | null>(null);
 
   const controls = useYTPlayer(containerRef, {
     videoId: video.videoId,
@@ -283,7 +282,6 @@ function YouTubeSlide({ video, index, active, windowed, gradientSeed, onAutoAdva
 
   const {
     failed,
-    isPlaying,
     isMuted,
     progressPercent,
     togglePlayPause,
@@ -303,8 +301,6 @@ function YouTubeSlide({ video, index, active, windowed, gradientSeed, onAutoAdva
 
   const handleContainerClick = () => {
     togglePlayPause();
-    setCenterIcon(isPlaying ? 'pause' : 'play');
-    setTimeout(() => setCenterIcon(null), 800);
   };
 
   const openYouTube = (e: React.MouseEvent) => {
@@ -355,15 +351,6 @@ function YouTubeSlide({ video, index, active, windowed, gradientSeed, onAutoAdva
 
       {/* Dark gradient overlays */}
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-black/60" />
-
-      {/* Center play/pause flash icon */}
-      {centerIcon && (
-        <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center animate-fade-in">
-          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-black/60 backdrop-blur-md text-white/90 shadow-2xl">
-            {centerIcon === 'pause' ? <Pause size={32} /> : <Play size={32} className="ml-1" />}
-          </div>
-        </div>
-      )}
 
       {/* Right side controls: Sound, Open in YT */}
       <div className="absolute right-3 bottom-20 z-30 flex flex-col items-center gap-4">
@@ -437,7 +424,6 @@ function PexelsSlide({ src, index, active, gradientSeed }: PexelsSlideProps) {
   const [failed, setFailed] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [progressPercent, setProgressPercent] = useState(0);
-  const [centerIcon, setCenterIcon] = useState<'play' | 'pause' | null>(null);
 
   const gradients = GRADIENTS[gradientSeed % GRADIENTS.length];
   const targetSec = Math.round(getTargetDuration(index));
@@ -457,13 +443,10 @@ function PexelsSlide({ src, index, active, gradientSeed }: PexelsSlideProps) {
     const v = localRef.current;
     if (!v) return;
     if (v.paused) {
-      v.play();
-      setCenterIcon('play');
+      v.play().catch(() => {});
     } else {
       v.pause();
-      setCenterIcon('pause');
     }
-    setTimeout(() => setCenterIcon(null), 800);
   };
 
   const toggleMute = () => {
@@ -516,15 +499,6 @@ function PexelsSlide({ src, index, active, gradientSeed }: PexelsSlideProps) {
 
       {/* Dark gradient overlays */}
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/50" />
-
-      {/* Center play/pause flash icon */}
-      {centerIcon && (
-        <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center animate-fade-in">
-          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-black/60 backdrop-blur-md text-white/90 shadow-2xl">
-            {centerIcon === 'pause' ? <Pause size={32} /> : <Play size={32} className="ml-1" />}
-          </div>
-        </div>
-      )}
 
       {/* Right side controls: Sound, YouTube */}
       <div className="absolute right-3 bottom-20 z-30 flex flex-col items-center gap-4">

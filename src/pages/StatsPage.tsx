@@ -14,6 +14,8 @@ import {
   Plus,
   ChevronDown,
   X,
+  History,
+  ExternalLink,
 } from 'lucide-react';
 import {
   getAverageDwell,
@@ -21,6 +23,7 @@ import {
   getMeta,
   formatScreenTime,
   getPeriodAverages,
+  getStatsForPeriod,
   getSessionChartData,
   resetSession,
   getStoredSearches,
@@ -29,20 +32,29 @@ import {
   clearSearchHistory,
   getAppTheme,
   setAppTheme,
+  getWatchHistory,
+  clearWatchHistory,
 } from '@/lib/storage';
 
 export default function StatsPage() {
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
   const [searchHistoryOpen, setSearchHistoryOpen] = useState(false);
+  const [watchHistoryOpen, setWatchHistoryOpen] = useState(false);
   const [newTopic, setNewTopic] = useState('');
   const [currentTheme, setCurrentTheme] = useState<'dark' | 'light'>(() => getAppTheme());
   const [version, setVersion] = useState(0);
+  const [activePeriod, setActivePeriod] = useState(0);
 
   const searches = useMemo(() => {
     return getStoredSearches();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version, searchHistoryOpen]);
+
+  const watchHistory = useMemo(() => {
+    return getWatchHistory();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [version, watchHistoryOpen]);
 
   const data = useMemo(() => {
     const meta = getMeta();
@@ -57,12 +69,18 @@ export default function StatsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version]);
 
-  const [activePeriod, setActivePeriod] = useState(0);
-  const growth = Math.round(data.avgDwell - data.firstDwell);
+  const currentPeriodLabel = data.periods[activePeriod]?.label || 'Daily';
+  const periodStats = useMemo(() => {
+    return getStatsForPeriod(currentPeriodLabel);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [version, currentPeriodLabel]);
+
+  const growth = Math.round((periodStats.avgDwell || data.avgDwell) - data.firstDwell);
 
   const handleReset = () => {
     resetSession();
     clearSearchHistory();
+    clearWatchHistory();
     setVersion((v) => v + 1);
     setResetOpen(false);
     setOptionsOpen(false);
@@ -99,11 +117,11 @@ export default function StatsPage() {
       {/* Hero stat */}
       <div className="animate-fade-up">
         <div className="text-xs font-medium uppercase tracking-widest text-white/40">
-          Your average attention span
+          Average attention span ({currentPeriodLabel})
         </div>
         <div className="mt-2 flex items-baseline gap-2">
           <span className="text-6xl font-bold tracking-tight text-white">
-            {Math.round(data.avgDwell)}s
+            {Math.round(periodStats.avgDwell)}s
           </span>
           {growth > 0 && (
             <span className="flex items-center gap-1 text-sm font-medium text-cyan-400">
@@ -146,22 +164,22 @@ export default function StatsPage() {
         <StatCard
           icon={<MousePointerClick size={18} />}
           label="Total swipes"
-          value={data.meta.totalSwipes.toString()}
+          value={periodStats.totalSwipes.toString()}
         />
         <StatCard
           icon={<Clock size={18} />}
           label="Screen time"
-          value={data.screenTime}
+          value={formatScreenTime(periodStats.screenTimeMs)}
         />
         <StatCard
           icon={<Eye size={18} />}
           label="Longest watch"
-          value={`${Math.round(data.meta.longestWatch)}s`}
+          value={`${Math.round(periodStats.longestWatch)}s`}
         />
         <StatCard
           icon={<Play size={18} />}
-          label="Watched today"
-          value={data.meta.videosWatchedToday.toString()}
+          label={`Watched (${currentPeriodLabel})`}
+          value={periodStats.videosWatched.toString()}
         />
       </div>
 
@@ -238,6 +256,23 @@ export default function StatsPage() {
               </div>
               <span className="text-[10px] text-white/40">
                 {searches.length} {searches.length === 1 ? 'topic' : 'topics'}
+              </span>
+            </button>
+
+            {/* Watch History */}
+            <button
+              onClick={() => {
+                setWatchHistoryOpen(true);
+                setOptionsOpen(false);
+              }}
+              className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-xs font-medium text-white/80 hover:bg-white/10 hover:text-white transition"
+            >
+              <div className="flex items-center gap-2.5">
+                <History size={15} className="text-cyan-400" />
+                <span>Watch History</span>
+              </div>
+              <span className="text-[10px] text-white/40">
+                {watchHistory.length} {watchHistory.length === 1 ? 'short' : 'shorts'}
               </span>
             </button>
 
@@ -370,6 +405,101 @@ export default function StatsPage() {
                 </button>
                 <button
                   onClick={() => setSearchHistoryOpen(false)}
+                  className="rounded-xl bg-white/10 px-4 py-1.5 text-xs font-semibold text-white hover:bg-white/20"
+                >
+                  Done
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Watch History */}
+      {watchHistoryOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in"
+          onClick={() => setWatchHistoryOpen(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-md rounded-2xl border border-white/15 bg-ink-900 p-5 shadow-2xl flex flex-col gap-4 text-white max-h-[85vh]"
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold flex items-center gap-2">
+                <History size={16} className="text-cyan-400" />
+                <span>Watch History</span>
+              </h3>
+              <button
+                onClick={() => setWatchHistoryOpen(false)}
+                className="p-1 text-white/60 hover:text-white transition"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* History List */}
+            <div className="max-h-[55vh] overflow-y-auto scrollbar-hide flex flex-col gap-2 pr-1">
+              {watchHistory.length === 0 ? (
+                <div className="py-12 text-center text-xs text-white/40 italic flex flex-col items-center gap-2">
+                  <History size={28} className="opacity-30" />
+                  <span>No watched shorts recorded yet. Watch videos in the feed to build your history!</span>
+                </div>
+              ) : (
+                watchHistory.map((item) => (
+                  <div
+                    key={item.id}
+                    className="flex items-center gap-3 rounded-xl bg-white/5 p-2.5 text-xs text-white/90 border border-white/5 hover:bg-white/10 transition"
+                  >
+                    {item.thumbnail ? (
+                      <img
+                        src={item.thumbnail}
+                        alt={item.title}
+                        className="h-14 w-10 shrink-0 rounded-lg object-cover bg-black/40"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <div className="h-14 w-10 shrink-0 rounded-lg bg-cyan-950/60 flex items-center justify-center text-cyan-400 font-bold text-[10px]">
+                        YT
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold text-white truncate text-xs">{item.title}</div>
+                      <div className="text-[11px] text-white/50 truncate mt-0.5">{item.channelTitle}</div>
+                      <div className="flex items-center gap-2 mt-1 text-[10px] text-cyan-400 font-medium">
+                        <span>Watched {item.dwellSeconds}s</span>
+                        {item.durationSec > 0 && <span className="text-white/30">• Total {item.durationSec}s</span>}
+                        <span className="text-white/30 ml-auto">{new Date(item.watchedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                      </div>
+                    </div>
+                    <a
+                      href={`https://www.youtube.com/shorts/${item.videoId}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="p-2 text-white/40 hover:text-cyan-400 transition shrink-0"
+                      title="Open on YouTube"
+                    >
+                      <ExternalLink size={15} />
+                    </a>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {watchHistory.length > 0 && (
+              <div className="pt-2 border-t border-white/10 flex justify-between items-center">
+                <button
+                  onClick={() => {
+                    clearWatchHistory();
+                    setVersion((v) => v + 1);
+                  }}
+                  className="text-xs text-red-400 hover:text-red-300 font-medium flex items-center gap-1"
+                >
+                  <Trash2 size={13} />
+                  <span>Clear Watch History</span>
+                </button>
+                <button
+                  onClick={() => setWatchHistoryOpen(false)}
                   className="rounded-xl bg-white/10 px-4 py-1.5 text-xs font-semibold text-white hover:bg-white/20"
                 >
                   Done

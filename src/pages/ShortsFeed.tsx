@@ -8,6 +8,8 @@ import {
   getSessionStartTarget,
   recordSessionEndTarget,
   addStoredSearch,
+  addWatchHistory,
+  isCalibrated,
 } from '@/lib/storage';
 import {
   fetchYouTubeVideos,
@@ -41,7 +43,6 @@ export default function ShortsFeed({ onExit }: Props) {
   const [activeSearchTerm, setActiveSearchTerm] = useState<string | null>(null);
 
   // Forced timer state & celebration
-  const [isLockedState, setIsLockedState] = useState(true);
   const [lockNotice, setLockNotice] = useState(false);
   const [celebrationMsg, setCelebrationMsg] = useState<string | null>(null);
   const celebratedMilestonesRef = useRef<Set<number>>(new Set());
@@ -54,6 +55,17 @@ export default function ShortsFeed({ onExit }: Props) {
   const screenStartRef = useRef<number>(Date.now());
   const isScrollingRef = useRef(false);
   const hasApiErrorRef = useRef(false);
+  const scrollAttemptRef = useRef<number>(0);
+
+  const ytQueueRef = useRef(ytQueue);
+  ytQueueRef.current = ytQueue;
+  const isYouTubeRef = useRef(isYouTube);
+  isYouTubeRef.current = isYouTube;
+
+  // Reset scroll attempt counter when active short index changes
+  useEffect(() => {
+    scrollAttemptRef.current = 0;
+  }, [activeIndex]);
 
   // Reset active player ready status whenever active index changes
   useEffect(() => {
@@ -75,42 +87,59 @@ export default function ShortsFeed({ onExit }: Props) {
     isPlayingRef.current = playing;
   }, []);
 
-  // Continuously track active watch time (only when video is playing) and check lock
-  useEffect(() => {
-    activeWatchSecRef.current = 0;
-    isPlayingRef.current = false;
-    celebratedMilestonesRef.current = new Set();
-    setIsLockedState(true);
-
-    const interval = setInterval(() => {
-      if (isPlayingRef.current && document.visibilityState === 'visible') {
-        activeWatchSecRef.current += 0.1;
-      }
-
-      const currentWatch = activeWatchSecRef.current;
-      const target = getTargetDuration(activeIndex);
-      let forcedWait = Math.max(0, target - 5);
-      if (isYouTube && ytQueue.length > 0 && ytQueue[activeIndex % ytQueue.length]?.durationSec) {
-        const dur = ytQueue[activeIndex % ytQueue.length].durationSec!;
+  const getForcedWaitTime = useCallback(
+    (index: number) => {
+      const target = getTargetDuration(index);
+      let forcedWait = Math.max(0, target - 3);
+      if (isYouTube && ytQueue.length > 0 && ytQueue[index % ytQueue.length]?.durationSec) {
+        const dur = ytQueue[index % ytQueue.length].durationSec!;
         if (dur > 0) {
           forcedWait = Math.min(forcedWait, Math.max(0, dur - 3));
         }
       }
-      const locked = currentWatch < forcedWait;
-      setIsLockedState(locked);
+      return forcedWait;
+    },
+    [isYouTube, ytQueue]
+  );
 
-      // Celebration milestones based on actual active playing time
-      // (30s, 1min, 1.5min, 2min, 3min)
+  const isTimerLocked = useCallback(() => {
+    const forcedWait = getForcedWaitTime(activeIndex);
+    return activeWatchSecRef.current < forcedWait;
+  }, [activeIndex, getForcedWaitTime]);
+
+  // Continuously track active watch time and update lock state
+  useEffect(() => {
+    activeWatchSecRef.current = 0;
+    isPlayingRef.current = false;
+
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        const video = isYouTubeRef.current && ytQueueRef.current.length > 0 ? ytQueueRef.current[activeIndex % ytQueueRef.current.length] : null;
+        const maxDuration = video?.durationSec && video.durationSec > 0 ? video.durationSec : 60;
+        if (activeWatchSecRef.current < maxDuration) {
+          activeWatchSecRef.current = Math.round((activeWatchSecRef.current + 0.1) * 10) / 10;
+        }
+      }
+
+      const currentWatch = activeWatchSecRef.current;
+      const targetSec = Math.round(getTargetDuration(activeIndex));
+      const forcedWait = getForcedWaitTime(activeIndex);
+
+      // Celebration milestones based on target reach & active watch time
       const milestones = [
-        { sec: 30, msg: 'Awesome focus! You reached 30 seconds of active watching!' },
-        { sec: 60, msg: 'Incredible focus! You reached 1 minute of active watching!' },
-        { sec: 90, msg: 'Deep focus state! You reached 1.5 minutes of active watching!' },
-        { sec: 120, msg: 'Master level focus! You reached 2 minutes of active watching!' },
-        { sec: 180, msg: 'Zen master focus! You reached 3 minutes of active watching!' },
+        { sec: 30, msg: 'Awesome focus! Target reached 30 seconds!' },
+        { sec: 60, msg: 'Incredible focus! Target reached 1 minute (60s)!' },
+        { sec: 90, msg: 'Deep focus state! Target reached 1.5 minutes (90s)!' },
+        { sec: 120, msg: 'Master level focus! Target reached 2 minutes (120s)!' },
+        { sec: 180, msg: 'Zen master focus! Target reached 3 minutes (180s)!' },
       ];
 
       for (const m of milestones) {
-        if (currentWatch >= m.sec && !celebratedMilestonesRef.current.has(m.sec)) {
+        if (
+          (targetSec >= m.sec || currentWatch >= m.sec) &&
+          currentWatch >= Math.min(m.sec, Math.max(1, forcedWait)) &&
+          !celebratedMilestonesRef.current.has(m.sec)
+        ) {
           celebratedMilestonesRef.current.add(m.sec);
           setCelebrationMsg(m.msg);
         }
@@ -118,7 +147,7 @@ export default function ShortsFeed({ onExit }: Props) {
     }, 100);
 
     return () => clearInterval(interval);
-  }, [activeIndex, isYouTube, ytQueue]);
+  }, [activeIndex, getForcedWaitTime]);
 
   // Load YouTube videos on mount using session search or defaults
   const loadFeed = useCallback((customSearch?: string) => {
@@ -158,26 +187,31 @@ export default function ShortsFeed({ onExit }: Props) {
     loadFeed(clean);
   };
 
-  // Record session end target on exit
-  const handleExitSession = useCallback(() => {
-    recordSessionEndTarget(activeIndex);
-    onExit();
-  }, [activeIndex, onExit]);
-
   const recordCurrent = useCallback(
     (fromIndex: number) => {
       const dwell = Math.round(activeWatchSecRef.current * 10) / 10;
       const screenTime = Date.now() - screenStartRef.current;
       if (isYouTube) {
         const video = ytQueue[fromIndex % ytQueue.length];
-        addDwellRecord({
-          videoIndex: fromIndex,
-          targetDuration: getTargetDuration(fromIndex),
-          dwellSeconds: dwell,
-          timestamp: Date.now(),
-          videoId: video?.videoId,
-          youtubeDurationSec: video?.durationSec,
-        });
+        if (video) {
+          addDwellRecord({
+            videoIndex: fromIndex,
+            targetDuration: getTargetDuration(fromIndex),
+            dwellSeconds: dwell,
+            timestamp: Date.now(),
+            videoId: video.videoId,
+            youtubeDurationSec: video.durationSec,
+          });
+          addWatchHistory({
+            videoId: video.videoId,
+            title: video.title,
+            channelTitle: video.channelTitle,
+            thumbnail: video.thumbnail,
+            durationSec: video.durationSec,
+            dwellSeconds: dwell,
+            searchTopic: activeSearchTerm || video.searchTopic || undefined,
+          });
+        }
       } else {
         addDwellRecord({
           videoIndex: fromIndex,
@@ -189,31 +223,27 @@ export default function ShortsFeed({ onExit }: Props) {
       recordSwipe(dwell, screenTime);
       activeWatchSecRef.current = 0;
     },
-    [isYouTube, ytQueue]
+    [activeSearchTerm, isYouTube, ytQueue]
   );
 
-  const isTimerLocked = useCallback(() => {
-    const target = getTargetDuration(activeIndex);
-    let forcedWait = Math.max(0, target - 5);
-    if (isYouTube && ytQueue.length > 0 && ytQueue[activeIndex % ytQueue.length]?.durationSec) {
-      const dur = ytQueue[activeIndex % ytQueue.length].durationSec!;
-      if (dur > 0) {
-        forcedWait = Math.min(forcedWait, Math.max(0, dur - 3));
-      }
-    }
-    return activeWatchSecRef.current < forcedWait;
-  }, [activeIndex, isYouTube, ytQueue]);
+  // Record session end target on exit
+  const handleExitSession = useCallback(() => {
+    recordCurrent(activeIndex);
+    recordSessionEndTarget(activeIndex);
+    onExit();
+  }, [activeIndex, onExit, recordCurrent]);
 
   const scrollToIndex = useCallback(
     (index: number) => {
       const container = containerRef.current;
       if (!container) return;
 
-      // Forced timer check when skipping forward: target minus 5s
       if (index > activeIndex && isTimerLocked()) {
         triggerLockNotice();
         return;
       }
+
+      if (index < 0 || index >= listLength) return;
 
       const targetEl = container.children[index] as HTMLElement;
       if (!targetEl) return;
@@ -224,9 +254,9 @@ export default function ShortsFeed({ onExit }: Props) {
       setShowHint(false);
       setTimeout(() => {
         isScrollingRef.current = false;
-      }, 400);
+      }, 350);
     },
-    [activeIndex, isTimerLocked, recordCurrent, triggerLockNotice]
+    [activeIndex, isTimerLocked, listLength, recordCurrent, triggerLockNotice]
   );
 
   const handleAutoAdvance = useCallback(() => {
@@ -245,7 +275,7 @@ export default function ShortsFeed({ onExit }: Props) {
     lastTapTimeRef.current = now;
   };
 
-  // Touch + wheel + scroll lock handlers
+  // Touch, wheel, and keyboard navigation handlers
   useEffect(() => {
     const container = containerRef.current;
     if (!container || feedMode === 'loading') return;
@@ -279,14 +309,13 @@ export default function ShortsFeed({ onExit }: Props) {
         return;
       }
 
-      if (Math.abs(dy) < 40) return;
+      if (Math.abs(dy) < 30) return;
       if (dy > 0) {
         if (isTimerLocked()) {
           triggerLockNotice();
           return;
         }
-        const next = activeIndex + 1;
-        if (next < listLength) scrollToIndex(next);
+        scrollToIndex(activeIndex + 1);
       } else if (activeIndex > 0) {
         scrollToIndex(activeIndex - 1);
       }
@@ -294,29 +323,33 @@ export default function ShortsFeed({ onExit }: Props) {
 
     const handleWheel = (e: WheelEvent) => {
       if (isScrollingRef.current) return;
-      if (Math.abs(e.deltaY) < 20) return;
-      if (e.deltaY > 0 && isTimerLocked()) {
-        if (e.cancelable) e.preventDefault();
-        e.stopPropagation();
-        triggerLockNotice();
-        return;
-      }
+      if (Math.abs(e.deltaY) < 15) return;
       if (e.deltaY > 0) {
-        const next = activeIndex + 1;
-        if (next < listLength) scrollToIndex(next);
+        if (isTimerLocked()) {
+          if (e.cancelable) e.preventDefault();
+          triggerLockNotice();
+          return;
+        }
+        scrollToIndex(activeIndex + 1);
       } else if (activeIndex > 0) {
         scrollToIndex(activeIndex - 1);
       }
     };
 
-    const handleScroll = () => {
-      if (isScrollingRef.current) return;
-      const activeEl = container.children[activeIndex] as HTMLElement;
-      if (!activeEl) return;
-      const targetTop = activeEl.offsetTop;
-      if (container.scrollTop > targetTop + 5 && isTimerLocked()) {
-        container.scrollTop = targetTop;
-        triggerLockNotice();
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (isSearchOpen) return;
+      if (e.key === 'ArrowDown' || e.key === 'PageDown' || e.key === ' ') {
+        e.preventDefault();
+        if (isTimerLocked()) {
+          triggerLockNotice();
+          return;
+        }
+        scrollToIndex(activeIndex + 1);
+      } else if (e.key === 'ArrowUp' || e.key === 'PageUp') {
+        e.preventDefault();
+        if (activeIndex > 0) {
+          scrollToIndex(activeIndex - 1);
+        }
       }
     };
 
@@ -324,16 +357,25 @@ export default function ShortsFeed({ onExit }: Props) {
     container.addEventListener('touchmove', handleTouchMove, { passive: false });
     container.addEventListener('touchend', handleTouchEnd, { passive: true });
     container.addEventListener('wheel', handleWheel, { passive: false });
-    container.addEventListener('scroll', handleScroll, { passive: true });
+    window.addEventListener('keydown', handleKeyDown);
 
     return () => {
       container.removeEventListener('touchstart', handleTouchStart);
       container.removeEventListener('touchmove', handleTouchMove);
       container.removeEventListener('touchend', handleTouchEnd);
       container.removeEventListener('wheel', handleWheel);
-      container.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [activeIndex, handleExitSession, isTimerLocked, scrollToIndex, listLength, recordCurrent, feedMode, triggerLockNotice]);
+  }, [
+    activeIndex,
+    feedMode,
+    handleExitSession,
+    isSearchOpen,
+    isTimerLocked,
+    recordCurrent,
+    scrollToIndex,
+    triggerLockNotice,
+  ]);
 
   useEffect(() => {
     const t = setTimeout(() => setShowHint(false), 4000);
@@ -362,7 +404,7 @@ export default function ShortsFeed({ onExit }: Props) {
   }
 
   return (
-    <div className="relative h-full w-full overflow-hidden bg-black select-none">
+    <div className="shorts-feed relative h-full w-full overflow-hidden bg-black select-none">
       {/* Floating Search Bar Overlay with Backdrop */}
       {isSearchOpen && (
         <div
@@ -429,8 +471,7 @@ export default function ShortsFeed({ onExit }: Props) {
       <div
         ref={containerRef}
         onClick={handleContainerTap}
-        className={`h-full w-full ${isLockedState ? 'overflow-hidden touch-none select-none' : 'overflow-y-scroll scrollbar-hide'}`}
-        style={{ scrollSnapType: isLockedState ? 'none' : 'y mandatory' }}
+        className="h-full w-full overflow-hidden select-none"
       >
         {isYouTube
           ? Array.from({ length: listLength }).map((_, i) => {
@@ -585,7 +626,9 @@ function YouTubeSlide({
 
   const gradients = GRADIENTS[gradientSeed % GRADIENTS.length];
   const targetSec = Math.round(getTargetDuration(index));
-  const targetLabel = index < 6 ? `Target: Calibrating (${index + 1}/6)` : `Target: ${targetSec}s`;
+  const isInitialCalibrated = isCalibrated();
+  const calLimit = isInitialCalibrated ? 4 : 13;
+  const targetLabel = index < calLimit ? `Target: Calibrating (${index + 1}/${calLimit})` : `Target: ${targetSec}s`;
   const posterUrl = video.thumbnail || `https://i.ytimg.com/vi/${video.videoId}/hqdefault.jpg`;
 
   return (
@@ -644,40 +687,40 @@ function YouTubeSlide({
             toggleMute();
           }}
           aria-label={isMuted ? 'Unmute video' : 'Mute video'}
-          className="flex flex-col items-center gap-1 text-white/90 hover:text-white active:scale-90 transition"
+          className="flex flex-col items-center gap-1 text-white hover:text-white active:scale-90 transition"
         >
-          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-black/40 backdrop-blur-md border border-white/20 shadow-lg">
+          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-black/50 backdrop-blur-md border border-white/20 shadow-lg">
             {isMuted ? (
               <VolumeX size={20} className="text-red-400" />
             ) : (
               <Volume2 size={20} className="text-cyan-400" />
             )}
           </div>
-          <span className="text-[10px] font-medium tracking-wide">{isMuted ? 'Muted' : 'Sound'}</span>
+          <span className="text-[11px] font-semibold text-white tracking-wide drop-shadow">{isMuted ? 'Muted' : 'Sound'}</span>
         </button>
 
         {/* Open in YT Button */}
         <button
           onClick={openYouTube}
           aria-label="Open in YouTube app"
-          className="flex flex-col items-center gap-1 text-white/90 hover:text-white active:scale-90 transition"
+          className="flex flex-col items-center gap-1 text-white hover:text-white active:scale-90 transition"
         >
           <div className="flex h-11 w-11 items-center justify-center rounded-full bg-red-600/90 backdrop-blur-md border border-red-400/30 shadow-lg text-white">
             <ExternalLink size={18} />
           </div>
-          <span className="text-[10px] font-medium tracking-wide text-red-300">YouTube</span>
+          <span className="text-[11px] font-semibold text-white/90 tracking-wide drop-shadow">YouTube</span>
         </button>
       </div>
 
       {/* Video metadata on bottom left */}
-      <div className="absolute left-4 bottom-10 z-30 max-w-[240px] text-white">
-        <div className="inline-flex items-center gap-1.5 rounded-full bg-cyan-500/20 px-2.5 py-0.5 text-[10px] font-medium text-cyan-300 border border-cyan-400/30 mb-2">
+      <div className="absolute left-4 bottom-10 z-30 max-w-[250px] text-white">
+        <div className="inline-flex items-center gap-1.5 rounded-full bg-cyan-500/25 px-2.5 py-0.5 text-[11px] font-semibold text-cyan-300 border border-cyan-400/40 mb-2 shadow-sm backdrop-blur-sm">
           <span>{targetLabel}</span>
         </div>
-        <h3 className="text-sm font-semibold text-white/95 line-clamp-2 leading-snug drop-shadow">
+        <h3 className="text-sm font-bold text-white line-clamp-2 leading-snug drop-shadow-md">
           {video.title}
         </h3>
-        <p className="mt-1 text-xs text-white/70 font-medium drop-shadow">
+        <p className="mt-1 text-xs text-white/90 font-medium drop-shadow-md">
           {video.channelTitle}
         </p>
       </div>
@@ -720,7 +763,9 @@ function PexelsSlide({
 
   const gradients = GRADIENTS[gradientSeed % GRADIENTS.length];
   const targetSec = Math.round(getTargetDuration(index));
-  const targetLabel = index < 6 ? `Target: Calibrating (${index + 1}/6)` : `Target: ${targetSec}s`;
+  const isInitialCalibrated = isCalibrated();
+  const calLimit = isInitialCalibrated ? 4 : 13;
+  const targetLabel = index < calLimit ? `Target: Calibrating (${index + 1}/${calLimit})` : `Target: ${targetSec}s`;
 
   useEffect(() => {
     const v = localRef.current;
@@ -820,34 +865,34 @@ function PexelsSlide({
             toggleMute();
           }}
           aria-label={isMuted ? 'Unmute video' : 'Mute video'}
-          className="flex flex-col items-center gap-1 text-white/90 hover:text-white active:scale-90 transition"
+          className="flex flex-col items-center gap-1 text-white hover:text-white active:scale-90 transition"
         >
-          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-black/40 backdrop-blur-md border border-white/20 shadow-lg">
+          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-black/50 backdrop-blur-md border border-white/20 shadow-lg">
             {isMuted ? (
               <VolumeX size={20} className="text-red-400" />
             ) : (
               <Volume2 size={20} className="text-cyan-400" />
             )}
           </div>
-          <span className="text-[10px] font-medium tracking-wide">{isMuted ? 'Muted' : 'Sound'}</span>
+          <span className="text-[11px] font-semibold text-white tracking-wide drop-shadow">{isMuted ? 'Muted' : 'Sound'}</span>
         </button>
 
         {/* Open in YT Button */}
         <button
           onClick={openYouTube}
           aria-label="Open in YouTube"
-          className="flex flex-col items-center gap-1 text-white/90 hover:text-white active:scale-90 transition"
+          className="flex flex-col items-center gap-1 text-white hover:text-white active:scale-90 transition"
         >
           <div className="flex h-11 w-11 items-center justify-center rounded-full bg-red-600/90 backdrop-blur-md border border-red-400/30 shadow-lg text-white">
             <ExternalLink size={18} />
           </div>
-          <span className="text-[10px] font-medium tracking-wide text-red-300">YouTube</span>
+          <span className="text-[11px] font-semibold text-white/90 tracking-wide drop-shadow">YouTube</span>
         </button>
       </div>
 
       {/* Target badge on bottom left */}
       <div className="absolute left-4 bottom-10 z-30 text-white">
-        <div className="inline-flex items-center gap-1.5 rounded-full bg-cyan-500/20 px-2.5 py-0.5 text-[10px] font-medium text-cyan-300 border border-cyan-400/30">
+        <div className="inline-flex items-center gap-1.5 rounded-full bg-cyan-500/25 px-2.5 py-0.5 text-[11px] font-semibold text-cyan-300 border border-cyan-400/40 shadow-sm backdrop-blur-sm">
           <span>{targetLabel}</span>
         </div>
       </div>

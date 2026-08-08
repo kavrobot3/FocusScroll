@@ -204,67 +204,157 @@ export interface FetchResult {
   error: string | null;
 }
 
-import { getShuffledStoredSearches } from './storage';
+import { getUserSearches, getWatchedVideoIds, getWatchHistory, removeStoredSearch } from './storage';
 
-export async function fetchYouTubeVideos(customQuery?: string): Promise<FetchResult> {
-  const storedSearches = getShuffledStoredSearches();
-  const activeQuery =
-    customQuery ||
-    (storedSearches.length > 0 ? storedSearches[0] : 'shorts');
-
-  // Check 6-hour localStorage cache first
-  const cached = getQueryCache(activeQuery);
+async function fetchQueryVideos(apiKey: string | undefined, query: string): Promise<YTVideo[]> {
+  // Check 6-hour cache
+  const cached = getQueryCache(query);
   if (cached && cached.length > 0) {
-    return { videos: cached, error: null };
+    return cached.map((v) => ({ ...v, searchTopic: v.searchTopic || query }));
   }
 
-  const apiKey = getYouTubeApiKey();
-  if (!apiKey) {
-    const err = 'No VITE_YOUTUBE_API_KEY environment variable configured';
-    lastRawError = err;
-    return { videos: [], error: err };
-  }
+  if (!apiKey) return [];
 
   try {
-    const ids = await searchVideoIds(apiKey, activeQuery);
-    if (ids.length === 0) {
-      const err = `No video results found for query "${activeQuery}"`;
-      lastRawError = err;
-      return { videos: [], error: err };
-    }
+    const ids = await searchVideoIds(apiKey, query);
+    if (ids.length === 0) return [];
 
     const details = await fetchVideoDetails(apiKey, ids);
 
-    // Filter embeddable videos between 8 and 90 seconds
     let filtered = details.filter(
       (v) => v.embeddable !== false && v.durationSec >= 8 && v.durationSec <= 90
     );
 
-    // If 8-90s range is empty, relax to 3-300s
     if (filtered.length === 0) {
       filtered = details.filter(
         (v) => v.embeddable !== false && v.durationSec >= 3 && v.durationSec <= 300
       );
     }
 
-    // Sort ascending by duration
-    filtered.sort((a, b) => a.durationSec - b.durationSec);
+    const tagged = filtered.map((v) => ({ ...v, searchTopic: query }));
 
-    if (filtered.length === 0) {
-      const err = `No suitable videos found for query "${activeQuery}"`;
-      lastRawError = err;
+    if (tagged.length > 0) {
+      setQueryCache(query, tagged);
+    }
+    return tagged;
+  } catch {
+    return [];
+  }
+}
+
+export async function fetchYouTubeVideos(customQuery?: string): Promise<FetchResult> {
+  const apiKey = getYouTubeApiKey();
+  const watchedIds = getWatchedVideoIds();
+
+  if (customQuery && customQuery.trim()) {
+    const cleanQuery = customQuery.trim();
+    const queryVideos = await fetchQueryVideos(apiKey, cleanQuery);
+
+    if (queryVideos.length === 0) {
+      const err = lastRawError || `No suitable videos found for query "${cleanQuery}"`;
       return { videos: [], error: err };
     }
 
-    // Cache valid results in localStorage for 6 hours
-    setQueryCache(activeQuery, filtered);
-    lastRawError = null;
-    return { videos: filtered, error: null };
-  } catch (err) {
-    const errMsg = err instanceof Error ? err.message : 'Failed to fetch YouTube videos';
-    lastRawError = errMsg;
-    return { videos: [], error: errMsg };
+    // Exclude watched videos if possible
+    const unwatched = queryVideos.filter((v) => !watchedIds.has(v.videoId));
+    const finalVideos = unwatched.length >= 2 ? unwatched : queryVideos;
+
+    return { videos: finalVideos, error: null };
   }
+
+  // --- DEFAULT FEED DISTRIBUTION FORMULA: N / (N + 1) ---
+  // N = number of user search queries.
+  // Probability of videos from searched terms = N / (N + 1)
+  // Probability of videos from fallback topics = 1 / (N + 1)
+
+  const history = getWatchHistory();
+  const topicDwellMap: Record<string, { totalDwell: number; count: number }> = {};
+  let totalHistoryDwell = 0;
+  let totalHistoryCount = 0;
+
+  history.forEach((item) => {
+    if (item.searchTopic) {
+      const topic = item.searchTopic.toLowerCase();
+      if (!topicDwellMap[topic]) topicDwellMap[topic] = { totalDwell: 0, count: 0 };
+      topicDwellMap[topic].totalDwell += item.dwellSeconds;
+      topicDwellMap[topic].count += 1;
+    }
+    totalHistoryDwell += item.dwellSeconds;
+    totalHistoryCount += 1;
+  });
+
+  const globalAvgDwell = totalHistoryCount > 0 ? totalHistoryDwell / totalHistoryCount : 15;
+
+  let userSearches = getUserSearches();
+
+  // Prune queries that consistently underperform (< 40% of average dwell after 2+ views)
+  userSearches = userSearches.filter((s) => {
+    const stats = topicDwellMap[s.toLowerCase()];
+    if (stats && stats.count >= 2) {
+      const topicAvg = stats.totalDwell / stats.count;
+      if (topicAvg < globalAvgDwell * 0.4) {
+        removeStoredSearch(s);
+        return false;
+      }
+    }
+    return true;
+  });
+
+  const N = Math.min(userSearches.length, 10);
+  const fallbackTopics = ['trending shorts', 'viral shorts', 'popular shorts', 'reels', 'shorts'];
+
+  // User search pools (N pools) + 1 Fallback pool
+  const searchQueriesToFetch = [...userSearches.slice(0, N)];
+  const fallbackQuery = fallbackTopics[Math.floor(Math.random() * fallbackTopics.length)];
+
+  const allQueriesToFetch = [...searchQueriesToFetch, fallbackQuery];
+
+  // Fetch / retrieve cached videos for each query in parallel
+  const rawVideoLists = await Promise.all(
+    allQueriesToFetch.map((q) => fetchQueryVideos(apiKey, q))
+  );
+
+  // We have N search video lists and 1 fallback video list.
+  // Interleave round-robin across all N+1 pools so each round draws 1 video from each of N search pools
+  // and 1 video from the fallback pool.
+  // Thus out of every N+1 videos in the feed, N come from user searches (N / (N + 1)) and 1 comes from fallback (1 / (N + 1)).
+
+  const interleaved: YTVideo[] = [];
+  const seenIds = new Set<string>();
+
+  let maxLen = 0;
+  rawVideoLists.forEach((list) => {
+    if (list.length > maxLen) maxLen = list.length;
+  });
+
+  for (let round = 0; round < maxLen; round++) {
+    // Shuffle pool indices for this round to randomize order
+    const poolIndices = Array.from({ length: rawVideoLists.length }, (_, idx) => idx).sort(
+      () => Math.random() - 0.5
+    );
+
+    for (const poolIdx of poolIndices) {
+      const video = rawVideoLists[poolIdx][round];
+      if (video && !seenIds.has(video.videoId)) {
+        seenIds.add(video.videoId);
+        interleaved.push(video);
+      }
+    }
+  }
+
+  if (interleaved.length === 0) {
+    const err = lastRawError || 'No videos available. Please check API key or network connection.';
+    return { videos: [], error: err };
+  }
+
+  // Exclude watched videos if unwatched count is sufficient
+  const unwatched = interleaved.filter((v) => !watchedIds.has(v.videoId));
+  const resultPool =
+    unwatched.length >= 3
+      ? unwatched
+      : [...unwatched, ...interleaved.filter((v) => watchedIds.has(v.videoId))];
+
+  return { videos: resultPool, error: null };
 }
 
 export function buildFeedQueue(videos: YTVideo[], startTarget: number = 3, increment: number = 1): YTVideo[] {

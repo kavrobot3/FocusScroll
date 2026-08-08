@@ -141,7 +141,7 @@ function DebugPanel({ onClose }: { onClose: () => void }) {
             <span className="text-cyan-300 font-medium">
               {calibrated
                 ? `Completed (${calAvg}s avg)`
-                : `In progress (${recordCount}/6 scrolls)`}
+                : `In progress (${recordCount}/13 scrolls)`}
             </span>
           </div>
 

@@ -85,3 +85,214 @@ body {
   border: 0 !important;
   pointer-events: none !important;
 }
+
+/* Light mode overrides */
+html.light,
+html.light body {
+  background-color: #f1f5f9 !important;
+  color: #0f172a !important;
+}
+
+html.light .bg-ink-950 {
+  background-color: #f8fafc !important;
+}
+
+html.light .bg-ink-900 {
+  background-color: #ffffff !important;
+}
+
+html.light .bg-ink-850 {
+  background-color: #f1f5f9 !important;
+}
+
+html.light .bg-ink-800 {
+  background-color: #e2e8f0 !important;
+}
+
+html.light .bg-ink-700 {
+  background-color: #cbd5e1 !important;
+}
+
+/* Primary cyan accent conversion for light mode (darker cyan/teal for readability) */
+html.light :not(.shorts-feed):not(.shorts-feed *) .text-cyan-400,
+html.light :not(.shorts-feed):not(.shorts-feed *) .text-cyan-300,
+html.light :not(.shorts-feed):not(.shorts-feed *) .text-cyan-500 {
+  color: #0284c7 !important;
+}
+
+html.light :not(.shorts-feed):not(.shorts-feed *) .bg-cyan-400,
+html.light :not(.shorts-feed):not(.shorts-feed *) .bg-cyan-500 {
+  background-color: #0284c7 !important;
+  color: #ffffff !important;
+}
+
+html.light :not(.shorts-feed):not(.shorts-feed *) .border-cyan-500,
+html.light :not(.shorts-feed):not(.shorts-feed *) .border-cyan-400,
+html.light :not(.shorts-feed):not(.shorts-feed *) .border-cyan-500\/30,
+html.light :not(.shorts-feed):not(.shorts-feed *) .border-cyan-500\/20,
+html.light :not(.shorts-feed):not(.shorts-feed *) .border-cyan-400\/30 {
+  border-color: #0284c7 !important;
+}
+
+/* Bottom Nav bar light mode styling */
+html.light nav {
+  background-color: rgba(255, 255, 255, 0.92) !important;
+  border-top-color: #e2e8f0 !important;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.05) !important;
+}
+
+html.light nav button.text-cyan-400 {
+  color: #0284c7 !important;
+}
+
+html.light nav button.text-white\/40 {
+  color: #64748b !important;
+}
+
+html.light nav button.text-white\/40:hover {
+  color: #0f172a !important;
+}
+
+/* Exclude shorts-feed video overlays from text light mode inversion */
+html.light :not(.shorts-feed):not(.shorts-feed *) .text-white {
+  color: #0f172a !important;
+}
+
+html.light :not(.shorts-feed):not(.shorts-feed *) .text-white\/95,
+html.light :not(.shorts-feed):not(.shorts-feed *) .text-white\/90,
+html.light :not(.shorts-feed):not(.shorts-feed *) .text-white\/80,
+html.light :not(.shorts-feed):not(.shorts-feed *) .text-white\/70 {
+  color: #1e293b !important;
+}
+
+html.light :not(.shorts-feed):not(.shorts-feed *) .text-white\/60,
+html.light :not(.shorts-feed):not(.shorts-feed *) .text-white\/50,
+html.light :not(.shorts-feed):not(.shorts-feed *) .text-white\/40,
+html.light :not(.shorts-feed):not(.shorts-feed *) .text-white\/30,
+html.light :not(.shorts-feed):not(.shorts-feed *) .text-white\/25,
+html.light :not(.shorts-feed):not(.shorts-feed *) .text-white\/20 {
+  color: #64748b !important;
+}
+
+html.light :not(.shorts-feed):not(.shorts-feed *) .border-white\/20,
+html.light :not(.shorts-feed):not(.shorts-feed *) .border-white\/15,
+html.light :not(.shorts-feed):not(.shorts-feed *) .border-white\/10,
+html.light :not(.shorts-feed):not(.shorts-feed *) .border-white\/5 {
+  border-color: #cbd5e1 !important;
+}
+
+html.light :not(.shorts-feed):not(.shorts-feed *) .bg-white\/5 {
+  background-color: rgba(15, 23, 42, 0.04) !important;
+}
+
+html.light :not(.shorts-feed):not(.shorts-feed *) .bg-white\/10 {
+  background-color: rgba(15, 23, 42, 0.08) !important;
+}
+
+html.light :not(.shorts-feed):not(.shorts-feed *) .bg-white\/20 {
+  background-color: rgba(15, 23, 42, 0.12) !important;
+}
+
+/* Ensure text on video overlay in shorts-feed is crisp, light, and readable in both light and dark modes */
+.shorts-feed,
+.shorts-feed *,
+html.light .shorts-feed,
+html.light .shorts-feed * {
+  color-scheme: dark;
+}
+
+.shorts-feed h1,
+.shorts-feed h2,
+.shorts-feed h3,
+.shorts-feed h4,
+.shorts-feed p,
+.shorts-feed span,
+.shorts-feed button,
+.shorts-feed input,
+.shorts-feed label,
+html.light .shorts-feed h1,
+html.light .shorts-feed h2,
+html.light .shorts-feed h3,
+html.light .shorts-feed h4,
+html.light .shorts-feed p,
+html.light .shorts-feed span,
+html.light .shorts-feed button,
+html.light .shorts-feed input,
+html.light .shorts-feed label {
+  color: #ffffff;
+}
+
+.shorts-feed .text-white,
+html.light .shorts-feed .text-white {
+  color: #ffffff !important;
+}
+
+.shorts-feed .text-white\/95,
+html.light .shorts-feed .text-white\/95 {
+  color: rgba(255, 255, 255, 0.95) !important;
+}
+
+.shorts-feed .text-white\/90,
+html.light .shorts-feed .text-white\/90 {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+.shorts-feed .text-white\/80,
+html.light .shorts-feed .text-white\/80 {
+  color: rgba(255, 255, 255, 0.8) !important;
+}
+
+.shorts-feed .text-white\/70,
+html.light .shorts-feed .text-white\/70 {
+  color: rgba(255, 255, 255, 0.7) !important;
+}
+
+.shorts-feed .text-white\/60,
+html.light .shorts-feed .text-white\/60 {
+  color: rgba(255, 255, 255, 0.6) !important;
+}
+
+.shorts-feed .text-white\/50,
+html.light .shorts-feed .text-white\/50 {
+  color: rgba(255, 255, 255, 0.5) !important;
+}
+
+.shorts-feed .text-white\/40,
+html.light .shorts-feed .text-white\/40 {
+  color: rgba(255, 255, 255, 0.4) !important;
+}
+
+.shorts-feed .text-cyan-300,
+html.light .shorts-feed .text-cyan-300 {
+  color: #67e8f9 !important;
+}
+
+.shorts-feed .text-cyan-400,
+html.light .shorts-feed .text-cyan-400 {
+  color: #22d3ee !important;
+}
+
+.shorts-feed .text-red-300,
+html.light .shorts-feed .text-red-300 {
+  color: #fca5a5 !important;
+}
+
+.shorts-feed .text-red-400,
+html.light .shorts-feed .text-red-400 {
+  color: #f87171 !important;
+}
+
+.shorts-feed .text-amber-300,
+html.light .shorts-feed .text-amber-300 {
+  color: #fcd34d !important;
+}
+
+.shorts-feed .text-amber-400,
+html.light .shorts-feed .text-amber-400 {
+  color: #fbbf24 !important;
+}
+
+.shorts-feed input::placeholder,
+html.light .shorts-feed input::placeholder {
+  color: rgba(255, 255, 255, 0.5) !important;
+}

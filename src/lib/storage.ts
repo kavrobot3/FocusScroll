@@ -35,29 +35,57 @@ const KEYS = {
   USER_SEARCHES: 'fs_user_searches',
   WATCH_HISTORY: 'fs_watch_history',
   THEME: 'fs_app_theme',
+  TARGET_SPEED: 'fs_target_speed_config',
 };
 
 const DEFAULT_START_TARGET = 3;
-const INCREMENT = 1;
 
-export function getAppTheme(): 'dark' | 'light' {
-  return readJSON<'dark' | 'light'>(KEYS.THEME, 'dark');
+export type TargetSpeedMode = 'stable' | 'slow' | 'medium' | 'fast' | 'very_fast' | 'custom';
+
+export interface TargetSpeedConfig {
+  mode: TargetSpeedMode;
+  customSeconds: number;
 }
 
-export function setAppTheme(theme: 'dark' | 'light'): void {
-  writeJSON(KEYS.THEME, theme);
-  if (theme === 'light') {
-    document.documentElement.classList.add('light');
-    document.documentElement.classList.remove('dark');
-  } else {
-    document.documentElement.classList.add('dark');
-    document.documentElement.classList.remove('light');
+export const SPEED_PRESETS: { mode: TargetSpeedMode; label: string; increment: number; desc: string }[] = [
+  { mode: 'stable', label: 'Stable', increment: 0, desc: 'No change' },
+  { mode: 'slow', label: 'Slow', increment: 0.2, desc: '0.2s / short' },
+  { mode: 'medium', label: 'Medium', increment: 0.7, desc: '0.7s / short' },
+  { mode: 'fast', label: 'Fast', increment: 1.2, desc: '1.2s / short' },
+  { mode: 'very_fast', label: 'Very Fast', increment: 2.7, desc: '2.7s / short' },
+];
+
+export function getTargetSpeedConfig(): TargetSpeedConfig {
+  return readJSON<TargetSpeedConfig>(KEYS.TARGET_SPEED, {
+    mode: 'medium',
+    customSeconds: 0.7,
+  });
+}
+
+export function setTargetSpeedConfig(config: TargetSpeedConfig): void {
+  const safeCustom = Math.max(0, Math.round((config.customSeconds || 0) * 1000) / 1000);
+  writeJSON(KEYS.TARGET_SPEED, { ...config, customSeconds: safeCustom });
+}
+
+export function getTargetIncrement(): number {
+  const config = getTargetSpeedConfig();
+  if (config.mode === 'custom') {
+    return Math.max(0, Math.round((config.customSeconds || 0) * 1000) / 1000);
   }
+  const found = SPEED_PRESETS.find((p) => p.mode === config.mode);
+  return found ? found.increment : 0.7;
+}
+
+export function getAppTheme(): 'dark' | 'light' {
+  return 'dark';
+}
+
+export function setAppTheme(): void {
+  // Legacy theme toggle retained for compatibility
 }
 
 export function initAppTheme(): void {
-  const theme = getAppTheme();
-  setAppTheme(theme);
+  // Legacy theme initialization
 }
 
 export function getSessionStartTarget(): number {
@@ -67,26 +95,25 @@ export function getSessionStartTarget(): number {
 }
 
 export function setSessionStartTarget(target: number): void {
-  const safe = Math.max(3, Math.round(target));
+  const safe = Math.max(3, Math.round(target * 1000) / 1000);
   writeJSON(KEYS.SESSION_START_TARGET, safe);
 }
 
 export function recordSessionEndTarget(lastVideoIndex: number): void {
   const currentStart = getSessionStartTarget();
-  const endingTarget = currentStart + lastVideoIndex * INCREMENT;
-  // Decrease by 10 for the next session continuation, minimum 3s
-  const nextStart = Math.max(3, Math.round(endingTarget - 10));
+  const increment = getTargetIncrement();
+  const endingTarget = currentStart + lastVideoIndex * increment;
+  const nextStart = Math.max(3, Math.round((endingTarget - 10) * 1000) / 1000);
   setSessionStartTarget(nextStart);
 }
 
 export function getCalibrationAverage(): number {
   const records = getDwellRecords();
-  // Examine up to the first 13 scrolls for initial calibration baseline
   const sample = records.slice(0, 13);
   if (sample.length === 0) return DEFAULT_START_TARGET;
   const sum = sample.reduce((s, r) => s + r.dwellSeconds, 0);
   const avg = sum / sample.length;
-  return Math.max(3, Math.round(avg * 10) / 10);
+  return Math.max(3, Math.round(avg * 1000) / 1000);
 }
 
 export function isCalibrated(): boolean {
@@ -95,9 +122,9 @@ export function isCalibrated(): boolean {
 
 export function getTargetDuration(videoIndex: number): number {
   const totalRecords = getDwellRecords().length;
-  // Initial calibration is 13 shorts; session-wise calibration is 4 shorts
   const isInitialDone = totalRecords >= 13;
   const calibrationLength = isInitialDone ? 4 : 13;
+  const increment = getTargetIncrement();
 
   if (videoIndex < calibrationLength) {
     return getSessionStartTarget();
@@ -105,7 +132,8 @@ export function getTargetDuration(videoIndex: number): number {
 
   const calAvg = getCalibrationAverage();
   const indexOffset = videoIndex - (calibrationLength - 1);
-  return Math.max(3, Math.round(calAvg + indexOffset * INCREMENT));
+  const calculated = calAvg + indexOffset * increment;
+  return Math.max(3, Math.round(calculated * 1000) / 1000);
 }
 
 export const DEFAULT_ASSUMED_SEARCHES = [
@@ -412,25 +440,96 @@ export function getStatsForPeriod(periodLabel: string): PeriodStats {
   };
 }
 
-export function getSessionChartData(): { label: string; avg: number }[] {
+export interface ChartPoint {
+  label: string;
+  subLabel?: string;
+  avg: number;
+  count: number;
+  totalTime: number;
+  timestamp?: number;
+}
+
+export function getChartDataForPeriod(periodLabel: string): ChartPoint[] {
   const records = getDwellRecords();
   if (records.length === 0) return [];
-  const groups: Record<string, number[]> = {};
-  records.forEach((r) => {
+
+  const now = Date.now();
+  let cutoff = 0;
+  if (periodLabel === 'Daily') cutoff = now - 24 * 60 * 60 * 1000;
+  else if (periodLabel === 'Weekly') cutoff = now - 7 * 24 * 60 * 60 * 1000;
+  else if (periodLabel === 'Monthly') cutoff = now - 30 * 24 * 60 * 60 * 1000;
+  else if (periodLabel === 'Yearly') cutoff = now - 365 * 24 * 60 * 60 * 1000;
+
+  const filtered = cutoff > 0 ? records.filter((r) => r.timestamp >= cutoff) : records;
+  if (filtered.length === 0) return [];
+
+  if (periodLabel === 'Daily') {
+    if (filtered.length <= 15) {
+      return filtered.map((r, i) => {
+        const timeStr = new Date(r.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const targetValue = Math.round((r.targetDuration || r.dwellSeconds || 3) * 10) / 10;
+        return {
+          label: `#${i + 1}`,
+          subLabel: timeStr,
+          avg: targetValue,
+          count: 1,
+          totalTime: Math.round(r.dwellSeconds),
+          timestamp: r.timestamp,
+        };
+      });
+    } else {
+      const groups: Record<string, DwellRecord[]> = {};
+      filtered.forEach((r) => {
+        const d = new Date(r.timestamp);
+        const hourKey = `${d.getHours()}:00`;
+        if (!groups[hourKey]) groups[hourKey] = [];
+        groups[hourKey].push(r);
+      });
+      return Object.keys(groups).map((h) => {
+        const recs = groups[h];
+        const sum = recs.reduce((s, r) => s + r.dwellSeconds, 0);
+        const maxTarget = Math.max(...recs.map((r) => r.targetDuration || r.dwellSeconds || 3));
+        const targetValue = Math.round(maxTarget * 10) / 10;
+        return {
+          label: h,
+          avg: targetValue,
+          count: recs.length,
+          totalTime: Math.round(sum),
+        };
+      });
+    }
+  }
+
+  const groups: Record<string, DwellRecord[]> = {};
+  filtered.forEach((r) => {
     const d = new Date(r.timestamp);
-    const key = `${d.getMonth() + 1}/${d.getDate()}`;
-    if (!groups[key]) groups[key] = [];
-    groups[key].push(r.dwellSeconds);
+    const dateKey = `${d.getMonth() + 1}/${d.getDate()}`;
+    if (!groups[dateKey]) groups[dateKey] = [];
+    groups[dateKey].push(r);
   });
+
   const keys = Object.keys(groups).sort((a, b) => {
     const [ma, da] = a.split('/').map(Number);
     const [mb, db] = b.split('/').map(Number);
     return ma - mb || da - db;
   });
-  return keys.map((k) => ({
-    label: k,
-    avg: Math.round((groups[k].reduce((s, v) => s + v, 0) / groups[k].length) * 10) / 10,
-  }));
+
+  return keys.map((k) => {
+    const recs = groups[k];
+    const sum = recs.reduce((s, r) => s + r.dwellSeconds, 0);
+    const maxTarget = Math.max(...recs.map((r) => r.targetDuration || r.dwellSeconds || 3));
+    const targetValue = Math.round(maxTarget * 10) / 10;
+    return {
+      label: k,
+      avg: targetValue,
+      count: recs.length,
+      totalTime: Math.round(sum),
+    };
+  });
+}
+
+export function getSessionChartData(): { label: string; avg: number }[] {
+  return getChartDataForPeriod('Lifetime');
 }
 
 export function seedData(): void {

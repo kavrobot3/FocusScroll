@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ArrowRight, X } from 'lucide-react';
+import { Palette } from 'lucide-react';
 import {
   getYouTubeApiKey,
   isQuotaExhausted,
@@ -15,17 +15,28 @@ import {
   isCalibrated,
   getDwellRecords,
 } from '@/lib/storage';
+import SearchOverlay from '@/components/SearchOverlay';
+import CustomizeModal from '@/components/CustomizeModal';
+import CreditsModal from '@/components/CreditsModal';
 
 interface Props {
-  onEnterFeed: () => void;
+  onEnterFeed: (topic?: string) => void;
+  onOpenStats?: () => void;
 }
 
 export default function HomePage({ onEnterFeed }: Props) {
   const [tapCount, setTapCount] = useState(0);
+  const [, setFocusClickCount] = useState(0);
   const [showDebug, setShowDebug] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isCustomizeOpen, setIsCustomizeOpen] = useState(false);
+  const [isCreditsOpen, setIsCreditsOpen] = useState(false);
 
   const avgDwell = getAverageDwell();
   const weeklyGrowth = getWeeklyGrowthSeconds();
+
+  // Calculate real focus score dynamically based on real average dwell time
+  const focusScore = avgDwell > 0 ? Math.min(99, Math.max(0, Math.round(avgDwell * 2.5))) : 0;
 
   useEffect(() => {
     if (tapCount >= 5) {
@@ -38,52 +49,182 @@ export default function HomePage({ onEnterFeed }: Props) {
     setTapCount((c) => c + 1);
   };
 
+  const handleFocusClick = () => {
+    setFocusClickCount((prev) => {
+      const next = prev + 1;
+      if (next >= 7) {
+        setIsCreditsOpen(true);
+        return 0;
+      }
+      return next;
+    });
+  };
+
+  const handleSelectTopic = (topic: string) => {
+    onEnterFeed(topic);
+  };
+
   return (
-    <div className="flex h-full flex-col items-center justify-between px-6 pt-20 pb-16">
-      <div className="flex flex-1 flex-col items-center justify-center gap-16">
-        <div className="text-center animate-fade-up">
+    <div className="antialiased min-h-full overflow-y-auto scrollbar-hide flex flex-col font-body text-body radial-gradient-bg bg-surface-container-lowest text-on-surface pb-28">
+      {/* TopAppBar with Customize Options Button */}
+      <header className="sticky top-0 left-0 right-0 z-40 bg-surface/80 backdrop-blur-xl border-b border-white/10 flex justify-between items-center px-margin-mobile h-16 shrink-0">
+        <div className="flex items-center gap-md">
+          <div className="w-8 h-8 rounded-full bg-surface-container-high border border-outline-variant/60 flex items-center justify-center text-primary font-bold text-xs">
+            FS
+          </div>
+        </div>
+        <div className="font-display-lg text-display-lg tracking-tighter text-primary text-[22px] font-bold leading-none">
+          FOCUS
+        </div>
+        <button
+          onClick={() => setIsCustomizeOpen(true)}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface-container-high border border-white/10 text-xs text-primary font-semibold hover:bg-white/10 transition-all shadow-sm active:scale-95"
+          title="Customize Theme Colors"
+        >
+          <Palette size={14} />
+          <span>Options</span>
+        </button>
+      </header>
+
+      {/* Main Content Canvas - Fully scrollable */}
+      <main className="flex-grow pt-6 pb-12 px-margin-mobile flex flex-col gap-xl max-w-[1440px] mx-auto w-full md:px-margin-desktop">
+        {/* Hero Metrics */}
+        <section className="flex flex-col md:flex-row justify-between items-center gap-xl md:gap-gutter">
           <div
             onClick={handleStatTap}
-            className="cursor-default select-none text-7xl font-bold tracking-tight text-white leading-none"
+            className="flex flex-col items-start w-full md:w-1/2 gap-sm cursor-pointer select-none"
           >
-            {avgDwell > 0
-              ? weeklyGrowth > 0
-                ? `+${Math.round(weeklyGrowth)}s`
-                : `${Math.round(avgDwell)}s`
-              : '0s'}
+            <span className="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-widest">
+              Average Watch-Time
+            </span>
+            <div className="font-number-xl text-number-xl text-primary text-[52px] md:text-[64px] font-bold leading-tight text-glow">
+              {avgDwell > 0
+                ? weeklyGrowth > 0
+                  ? `+${weeklyGrowth.toFixed(1)}s`
+                  : `${avgDwell.toFixed(1)}s`
+                : '0.0s'}
+            </div>
+            <div className="font-body text-body text-on-surface-variant mt-unit text-sm md:text-base">
+              {avgDwell > 0
+                ? weeklyGrowth > 0
+                  ? 'Sustained attention growth this week'
+                  : 'Average watch time per video'
+                : 'No watch time recorded yet — start scrolling below'}
+            </div>
           </div>
-          <div className="mt-3 text-sm font-medium text-white/40 tracking-wide">
-            {avgDwell > 0
-              ? weeklyGrowth > 0
-                ? 'your attention span grew this week'
-                : 'average watch time per video'
-              : 'start scrolling to build attention span'}
-          </div>
-        </div>
 
-        <div className="max-w-[260px] text-center animate-fade-up" style={{ animationDelay: '0.15s' }}>
-          <p className="text-lg font-light leading-relaxed text-white/70 italic">
-            What destroyed your attention
-            <br />
-            will now rebuild it.
+          {/* Focus Score Circular Element */}
+          <div className="w-full md:w-1/2 flex justify-center md:justify-end">
+            <div
+              onClick={handleFocusClick}
+              className="relative w-40 h-40 md:w-48 md:h-48 flex items-center justify-center rounded-full glass-panel glow-secondary cursor-pointer active:scale-95 transition-transform select-none"
+            >
+              <svg className="absolute inset-0 w-full h-full transform -rotate-90" viewBox="0 0 100 100">
+                <circle
+                  cx="50"
+                  cy="50"
+                  fill="none"
+                  r="45"
+                  stroke="rgba(255,255,255,0.05)"
+                  strokeWidth="2"
+                />
+                <circle
+                  cx="50"
+                  cy="50"
+                  fill="none"
+                  r="45"
+                  stroke="#c4c0ff"
+                  strokeDasharray="283"
+                  strokeDashoffset={283 - (283 * focusScore) / 100}
+                  strokeLinecap="round"
+                  strokeWidth="2.5"
+                  className="transition-all duration-1000 ease-out"
+                />
+              </svg>
+              <div className="flex flex-col items-center">
+                <span className="font-number-xl text-number-xl text-on-surface text-[34px] md:text-[38px] font-bold leading-none">
+                  {focusScore}
+                </span>
+                <span className="font-label-caps text-label-caps text-secondary mt-unit uppercase tracking-wider text-[11px]">
+                  Focus Score
+                </span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Quote Area */}
+        <section className="py-md px-md md:px-xl border-l-2 border-primary/30 my-2">
+          <p className="font-headline text-headline italic text-on-surface-variant max-w-2xl text-base md:text-xl leading-relaxed font-light">
+            "What destroyed your attention will now help you{' '}
+            <span className="text-primary text-glow font-normal not-italic">rebuild it.</span>"
           </p>
-        </div>
-      </div>
+        </section>
 
-      <div className="flex flex-col items-center gap-4 animate-fade-up" style={{ animationDelay: '0.3s' }}>
-        <div className="relative">
-          <div className="absolute inset-0 rounded-full bg-cyan-400/20 pulse-ring" />
-          <button
-            onClick={onEnterFeed}
-            aria-label="Enter feed"
-            className="relative flex h-20 w-20 items-center justify-center rounded-full bg-cyan-400 text-ink-950 transition-all duration-300 hover:scale-105 active:scale-95 shadow-lg shadow-cyan-400/20"
+        {/* Intent Search */}
+        <section className="flex flex-col gap-md">
+          <div
+            onClick={() => setIsSearchOpen(true)}
+            className="relative group cursor-pointer"
           >
-            <ArrowRight size={28} strokeWidth={2.5} />
-          </button>
-        </div>
-        <span className="text-xs text-white/30 tracking-widest uppercase font-medium">Scroll Feed</span>
-      </div>
+            <span className="material-symbols-outlined absolute left-md top-1/2 transform -translate-y-1/2 text-on-surface-variant/50 z-10">
+              search
+            </span>
+            <input
+              readOnly
+              type="text"
+              placeholder="What do you want to watch?"
+              className="w-full bg-surface-container-high text-on-surface font-body text-body py-md md:py-lg pl-xl pr-md rounded-full border border-outline-variant/30 group-hover:border-primary/50 transition-all placeholder:text-on-surface-variant/50 glass-panel bg-surface-container-low/70 cursor-pointer text-sm md:text-base pointer-events-none"
+            />
+          </div>
+          <div className="flex flex-wrap items-center gap-sm px-sm">
+            <span className="font-label-caps text-label-caps text-on-surface-variant/50 mr-sm py-sm text-[11px] uppercase tracking-wider">
+              Explore Topics:
+            </span>
+            {['Science', 'Space', 'Tech', 'Cooking', 'Mindset', 'Fitness'].map((cat) => (
+              <button
+                key={cat}
+                onClick={() => handleSelectTopic(cat)}
+                className="px-md py-sm rounded-full border border-outline-variant/40 text-on-surface-variant font-caption text-caption hover:bg-surface-container-highest hover:text-primary transition-colors text-xs"
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+        </section>
 
+        {/* Primary Action */}
+        <section className="mt-4 flex justify-center pb-6">
+          <button
+            onClick={() => onEnterFeed()}
+            className="w-full md:w-auto bg-primary text-on-primary font-headline text-headline py-md md:py-lg px-xxl rounded-full glow-primary hover:scale-[1.02] active:scale-95 transition-transform duration-200 font-semibold tracking-wide text-center"
+          >
+            Start focused scrolling
+          </button>
+        </section>
+      </main>
+
+      {/* Search Overlay */}
+      <SearchOverlay
+        isOpen={isSearchOpen}
+        onClose={() => setIsSearchOpen(false)}
+        onSelectTopic={handleSelectTopic}
+      />
+
+      {/* Customize Theme Modal */}
+      <CustomizeModal
+        isOpen={isCustomizeOpen}
+        onClose={() => setIsCustomizeOpen(false)}
+        onStartScroll={() => onEnterFeed()}
+      />
+
+      {/* Secret Credits Modal */}
+      <CreditsModal
+        isOpen={isCreditsOpen}
+        onClose={() => setIsCreditsOpen(false)}
+      />
+
+      {/* Debug Panel */}
       {showDebug && <DebugPanel onClose={() => setShowDebug(false)} />}
     </div>
   );
@@ -111,22 +252,22 @@ function DebugPanel({ onClose }: { onClose: () => void }) {
   } else if (cachedVideos && cachedVideos.length > 0) {
     const ageMin = cacheAge ? Math.round(cacheAge / 60000) : 0;
     status = `Cached ${cachedVideos.length} videos (${ageMin}m ago)`;
-    statusColor = 'text-cyan-400';
+    statusColor = 'text-primary';
   } else {
     status = 'Key present, fetching directly...';
     statusColor = 'text-white/60';
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md animate-fade-in">
-      <div className="mx-6 w-full max-w-[340px] rounded-2xl border border-white/20 bg-ink-850 p-5 shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md animate-fade-in">
+      <div className="mx-6 w-full max-w-[340px] rounded-2xl border border-white/20 bg-surface-container-high p-5 shadow-2xl text-on-surface">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-bold text-white flex items-center gap-2">
-            <span className="h-2 w-2 rounded-full bg-cyan-400 animate-pulse" />
+            <span className="h-2 w-2 rounded-full bg-primary animate-pulse" />
             <span>Judge Mode / Debug</span>
           </h2>
           <button onClick={onClose} className="text-white/40 hover:text-white/80">
-            <X size={18} />
+            <span className="material-symbols-outlined text-[20px]">close</span>
           </button>
         </div>
 
@@ -138,7 +279,7 @@ function DebugPanel({ onClose }: { onClose: () => void }) {
 
           <div>
             <span className="text-white/40">Calibration: </span>
-            <span className="text-cyan-300 font-medium">
+            <span className="text-primary font-medium">
               {calibrated
                 ? `Completed (${calAvg}s avg)`
                 : `In progress (${recordCount}/13 scrolls)`}
@@ -177,5 +318,3 @@ function DebugPanel({ onClose }: { onClose: () => void }) {
     </div>
   );
 }
-
-

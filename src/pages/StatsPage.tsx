@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import {
   TrendingUp,
   MousePointerClick,
@@ -7,8 +7,6 @@ import {
   Play,
   RotateCcw,
   Settings,
-  Sun,
-  Moon,
   Search,
   Trash2,
   Plus,
@@ -16,6 +14,8 @@ import {
   X,
   History,
   ExternalLink,
+  Palette,
+  Gauge,
 } from 'lucide-react';
 import {
   getAverageDwell,
@@ -24,27 +24,44 @@ import {
   formatScreenTime,
   getPeriodAverages,
   getStatsForPeriod,
-  getSessionChartData,
+  getChartDataForPeriod,
+  ChartPoint,
   resetSession,
   getStoredSearches,
   removeStoredSearch,
   addStoredSearch,
   clearSearchHistory,
-  getAppTheme,
-  setAppTheme,
   getWatchHistory,
   clearWatchHistory,
 } from '@/lib/storage';
+import CustomizeModal from '@/components/CustomizeModal';
+import TargetSpeedModal from '@/components/TargetSpeedModal';
 
-export default function StatsPage() {
+interface Props {
+  onEnterFeed?: () => void;
+}
+
+export default function StatsPage({ onEnterFeed }: Props) {
   const [optionsOpen, setOptionsOpen] = useState(false);
+  const [customizeOpen, setCustomizeOpen] = useState(false);
+  const [targetSpeedOpen, setTargetSpeedOpen] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
   const [searchHistoryOpen, setSearchHistoryOpen] = useState(false);
   const [watchHistoryOpen, setWatchHistoryOpen] = useState(false);
   const [newTopic, setNewTopic] = useState('');
-  const [currentTheme, setCurrentTheme] = useState<'dark' | 'light'>(() => getAppTheme());
   const [version, setVersion] = useState(0);
   const [activePeriod, setActivePeriod] = useState(0);
+
+  // Auto-update graph & stats whenever window gains focus or storage changes
+  useEffect(() => {
+    const handleUpdate = () => setVersion((v) => v + 1);
+    window.addEventListener('storage', handleUpdate);
+    window.addEventListener('focus', handleUpdate);
+    return () => {
+      window.removeEventListener('storage', handleUpdate);
+      window.removeEventListener('focus', handleUpdate);
+    };
+  }, []);
 
   const searches = useMemo(() => {
     return getStoredSearches();
@@ -64,14 +81,19 @@ export default function StatsPage() {
       meta,
       screenTime: formatScreenTime(meta.totalScreenTimeMs),
       periods: getPeriodAverages(),
-      chart: getSessionChartData(),
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version]);
 
   const currentPeriodLabel = data.periods[activePeriod]?.label || 'Daily';
+  
   const periodStats = useMemo(() => {
     return getStatsForPeriod(currentPeriodLabel);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [version, currentPeriodLabel]);
+
+  const chartData = useMemo(() => {
+    return getChartDataForPeriod(currentPeriodLabel);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version, currentPeriodLabel]);
 
@@ -84,12 +106,6 @@ export default function StatsPage() {
     setVersion((v) => v + 1);
     setResetOpen(false);
     setOptionsOpen(false);
-  };
-
-  const handleToggleTheme = () => {
-    const nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
-    setAppTheme(nextTheme);
-    setCurrentTheme(nextTheme);
   };
 
   const handleRemoveSearch = (query: string) => {
@@ -146,17 +162,17 @@ export default function StatsPage() {
 
       {/* Chart */}
       <div className="mt-8 animate-fade-up" style={{ animationDelay: '0.1s' }}>
-        <div className="mb-3 text-xs font-medium uppercase tracking-wider text-white/40">
-          Average watch time per session
+        <div className="mb-3 flex items-center justify-between">
+          <span className="text-xs font-medium uppercase tracking-wider text-white/40">
+            Attention Span Trend ({currentPeriodLabel})
+          </span>
+          {chartData.length > 0 && (
+            <span className="text-[10px] text-cyan-400/80 bg-cyan-950/60 border border-cyan-500/20 px-2 py-0.5 rounded-full">
+              Hover graph points for details
+            </span>
+          )}
         </div>
-        {data.chart.length > 0 ? (
-          <AreaChart data={data.chart} />
-        ) : (
-          <div className="flex h-36 flex-col items-center justify-center rounded-2xl bg-ink-800 p-4 text-center border border-white/5">
-            <span className="text-xs text-white/40">No watch history yet</span>
-            <span className="mt-1 text-[11px] text-white/20">Charts appear automatically as you scroll</span>
-          </div>
-        )}
+        <AreaChart data={chartData} periodLabel={currentPeriodLabel} />
       </div>
 
       {/* Stats grid */}
@@ -188,14 +204,14 @@ export default function StatsPage() {
         <div className="mb-3 text-xs font-medium uppercase tracking-wider text-white/40">
           Attention span breakdown
         </div>
-        <div className="flex gap-1 rounded-xl bg-ink-800 p-1">
+        <div className="flex gap-1 rounded-xl bg-ink-800 p-1 border border-white/5">
           {data.periods.map((p, i) => (
             <button
               key={p.label}
               onClick={() => setActivePeriod(i)}
               className={`flex-1 rounded-lg py-2 text-xs font-medium transition-all ${
                 activePeriod === i
-                  ? 'bg-cyan-400 text-ink-950 shadow-md'
+                  ? 'bg-cyan-400 text-ink-950 font-semibold shadow-md'
                   : 'text-white/50 hover:text-white/80'
               }`}
             >
@@ -225,20 +241,37 @@ export default function StatsPage() {
         {/* Dropdown Menu */}
         {optionsOpen && (
           <div className="absolute bottom-12 z-50 w-64 rounded-2xl border border-white/15 bg-ink-900/95 p-2 shadow-2xl backdrop-blur-xl animate-fade-in flex flex-col gap-1">
-            {/* Theme Toggle */}
+            {/* Customize Theme Colors */}
             <button
               onClick={() => {
-                handleToggleTheme();
+                setCustomizeOpen(true);
                 setOptionsOpen(false);
               }}
               className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-xs font-medium text-white/80 hover:bg-white/10 hover:text-white transition"
             >
               <div className="flex items-center gap-2.5">
-                {currentTheme === 'dark' ? <Moon size={15} className="text-cyan-400" /> : <Sun size={15} className="text-amber-400" />}
-                <span>Appearance</span>
+                <Palette size={15} className="text-cyan-400" />
+                <span>Customize Colors</span>
               </div>
-              <span className="text-[10px] uppercase font-bold text-white/40 bg-white/5 px-2 py-0.5 rounded-full">
-                {currentTheme}
+              <span className="text-[10px] text-cyan-400 font-bold bg-cyan-400/10 px-2 py-0.5 rounded-full border border-cyan-400/20">
+                Theme
+              </span>
+            </button>
+
+            {/* Target Growth Speed */}
+            <button
+              onClick={() => {
+                setTargetSpeedOpen(true);
+                setOptionsOpen(false);
+              }}
+              className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-xs font-medium text-white/80 hover:bg-white/10 hover:text-white transition"
+            >
+              <div className="flex items-center gap-2.5">
+                <Gauge size={15} className="text-cyan-400" />
+                <span>Target Growth Speed</span>
+              </div>
+              <span className="text-[10px] text-cyan-400 font-bold bg-cyan-400/10 px-2 py-0.5 rounded-full border border-cyan-400/20">
+                Speed
               </span>
             </button>
 
@@ -509,6 +542,20 @@ export default function StatsPage() {
           </div>
         </div>
       )}
+
+      {/* Modal: Customize Theme */}
+      <CustomizeModal
+        isOpen={customizeOpen}
+        onClose={() => setCustomizeOpen(false)}
+        onStartScroll={onEnterFeed}
+      />
+
+      {/* Modal: Target Speed */}
+      <TargetSpeedModal
+        isOpen={targetSpeedOpen}
+        onClose={() => setTargetSpeedOpen(false)}
+        onStartScroll={onEnterFeed}
+      />
     </div>
   );
 }
@@ -532,24 +579,36 @@ function StatCard({ icon, label, value }: StatCardProps) {
 }
 
 interface ChartProps {
-  data: { label: string; avg: number }[];
+  data: ChartPoint[];
+  periodLabel: string;
 }
 
-function AreaChart({ data }: ChartProps) {
+function AreaChart({ data, periodLabel }: ChartProps) {
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
+
   if (data.length === 0) {
-    return <div className="h-36 rounded-2xl bg-ink-800" />;
+    return (
+      <div className="flex h-36 flex-col items-center justify-center rounded-2xl bg-ink-800 p-4 text-center border border-white/5">
+        <span className="text-xs text-white/40">No watch history for {periodLabel}</span>
+        <span className="mt-1 text-[11px] text-white/20">Watch shorts in this period to build your chart</span>
+      </div>
+    );
   }
 
-  const w = 300;
-  const h = 120;
-  const pad = 12;
-  const max = Math.max(...data.map((d) => d.avg)) * 1.15 || 10;
-  const min = Math.min(...data.map((d) => d.avg)) * 0.85 || 0;
-  const range = max - min || 1;
+  const w = 340;
+  const h = 140;
+  const padX = 18;
+  const padY = 20;
+
+  const values = data.map((d) => d.avg);
+  const maxVal = Math.max(...values, 1) * 1.1;
+  const minVal = Math.min(...values, 0) * 0.9;
+  const range = maxVal - minVal || 1;
 
   const points = data.map((d, i) => {
-    const x = data.length === 1 ? w / 2 : pad + (i / (data.length - 1)) * (w - pad * 2);
-    const y = h - pad - ((d.avg - min) / range) * (h - pad * 2);
+    const x = data.length === 1 ? w / 2 : padX + (i / (data.length - 1)) * (w - padX * 2);
+    const y = h - padY - ((d.avg - minVal) / range) * (h - padY * 2);
     return { x, y, ...d };
   });
 
@@ -557,26 +616,150 @@ function AreaChart({ data }: ChartProps) {
     .map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`)
     .join(' ');
 
-  const areaD = `${pathD} L ${points[points.length - 1].x.toFixed(1)} ${h - pad} L ${points[0].x.toFixed(1)} ${h - pad} Z`;
+  const areaD = `${pathD} L ${points[points.length - 1].x.toFixed(1)} ${h - padY} L ${points[0].x.toFixed(1)} ${h - padY} Z`;
+
+  const activeIdx = hoveredIdx !== null ? hoveredIdx : points.length - 1;
+  const activePoint = points[activeIdx] || points[0];
+
+  const handlePointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (!svgRef.current || points.length === 0) return;
+    const rect = svgRef.current.getBoundingClientRect();
+    const mouseX = ((e.clientX - rect.left) / rect.width) * w;
+
+    let closest = 0;
+    let minDiff = Math.abs(points[0].x - mouseX);
+    for (let i = 1; i < points.length; i++) {
+      const diff = Math.abs(points[i].x - mouseX);
+      if (diff < minDiff) {
+        minDiff = diff;
+        closest = i;
+      }
+    }
+    setHoveredIdx(closest);
+  };
+
+  const handlePointerLeave = () => {
+    setHoveredIdx(null);
+  };
 
   return (
-    <div className="rounded-2xl bg-ink-800 p-3 border border-white/5">
-      <svg viewBox={`0 0 ${w} ${h}`} className="w-full" style={{ height: 'auto' }}>
+    <div className="relative rounded-2xl bg-ink-800 p-3.5 border border-white/10 shadow-xl overflow-hidden select-none">
+      {/* Dynamic Hover Tooltip Banner */}
+      <div className="mb-2 flex items-center justify-between bg-white/5 rounded-xl px-3 py-2 border border-white/5 backdrop-blur-md">
+        <div className="flex items-center gap-2">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-cyan-400/10 text-cyan-400 font-bold text-xs shrink-0">
+            <Clock size={15} />
+          </div>
+          <div>
+            <div className="text-[11px] font-medium text-white/50 flex items-center gap-1.5">
+              <span className="font-semibold text-white/80">
+                {activePoint.subLabel ? `${activePoint.label} (${activePoint.subLabel})` : activePoint.label}
+              </span>
+              {hoveredIdx !== null ? (
+                <span className="text-[9px] bg-cyan-400/20 text-cyan-300 font-bold px-1.5 py-0.2 rounded">
+                  Inspecting
+                </span>
+              ) : (
+                <span className="text-[9px] text-white/30 hidden sm:inline">(Hover to inspect)</span>
+              )}
+            </div>
+            <div className="text-xs font-bold text-white flex items-center gap-2 mt-0.5">
+              <span className="text-cyan-400 text-sm font-extrabold">{activePoint.avg}s</span>
+              <span className="text-[10px] text-white/40 font-normal">attention span</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="text-right shrink-0">
+          <div className="text-[10px] text-white/40 font-medium">
+            {activePoint.count} {activePoint.count === 1 ? 'short' : 'shorts'}
+          </div>
+          <div className="text-xs font-semibold text-white/80">
+            {activePoint.totalTime}s total
+          </div>
+        </div>
+      </div>
+
+      {/* Interactive SVG Chart */}
+      <svg
+        ref={svgRef}
+        viewBox={`0 0 ${w} ${h}`}
+        className="w-full touch-none cursor-crosshair"
+        style={{ height: 'auto' }}
+        onPointerMove={handlePointerMove}
+        onPointerLeave={handlePointerLeave}
+        onPointerDown={handlePointerMove}
+      >
         <defs>
           <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#22D3EE" stopOpacity="0.35" />
-            <stop offset="100%" stopColor="#22D3EE" stopOpacity="0" />
+            <stop offset="0%" stopColor="#22D3EE" stopOpacity="0.4" />
+            <stop offset="100%" stopColor="#22D3EE" stopOpacity="0.0" />
           </linearGradient>
         </defs>
+
+        {/* Horizontal grid lines */}
+        <line x1={padX} y1={padY} x2={w - padX} y2={padY} stroke="rgba(255,255,255,0.05)" strokeDasharray="3 3" />
+        <line x1={padX} y1={h / 2} x2={w - padX} y2={h / 2} stroke="rgba(255,255,255,0.05)" strokeDasharray="3 3" />
+        <line x1={padX} y1={h - padY} x2={w - padX} y2={h - padY} stroke="rgba(255,255,255,0.08)" />
+
+        {/* Filled Area */}
         <path d={areaD} fill="url(#areaGrad)" />
-        <path d={pathD} fill="none" stroke="#22D3EE" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-        {points.map((p, i) => (
-          <circle key={i} cx={p.x} cy={p.y} r="3" fill="#22D3EE" />
-        ))}
+
+        {/* Chart Line */}
+        <path d={pathD} fill="none" stroke="#22D3EE" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+
+        {/* Vertical Crosshair Line */}
+        {activePoint && (
+          <line
+            x1={activePoint.x}
+            y1={padY}
+            x2={activePoint.x}
+            y2={h - padY}
+            stroke="#22D3EE"
+            strokeWidth="1.5"
+            strokeDasharray="2 2"
+            opacity="0.8"
+          />
+        )}
+
+        {/* Data Points */}
+        {points.map((p, i) => {
+          const isActive = i === activeIdx;
+          return (
+            <g key={i}>
+              {isActive && (
+                <circle
+                  cx={p.x}
+                  cy={p.y}
+                  r="7"
+                  fill="#22D3EE"
+                  fillOpacity="0.3"
+                  className="animate-ping"
+                />
+              )}
+              <circle
+                cx={p.x}
+                cy={p.y}
+                r={isActive ? 5 : 3.5}
+                fill={isActive ? '#FFFFFF' : '#22D3EE'}
+                stroke={isActive ? '#22D3EE' : '#0F172A'}
+                strokeWidth={isActive ? 2 : 1.5}
+                className="transition-all duration-150"
+              />
+            </g>
+          );
+        })}
       </svg>
+
+      {/* X Axis Labels */}
       <div className="mt-1 flex justify-between px-1">
         {data.map((d, i) => (
-          <span key={i} className="text-[9px] text-white/30">
+          <span
+            key={i}
+            className={`text-[9px] transition-colors ${
+              i === activeIdx ? 'text-cyan-400 font-bold' : 'text-white/30'
+            }`}
+          >
             {d.label}
           </span>
         ))}

@@ -1,0 +1,191 @@
+<!DOCTYPE html><html class="dark" lang="en"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>FocusScroll Home</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "outline-variant": "#3b4a47",
+                        "on-tertiary-fixed-variant": "#5f4100",
+                        "inverse-surface": "#d4e4fa",
+                        "inverse-on-surface": "#233143",
+                        "on-tertiary": "#422c00",
+                        "on-surface": "#d4e4fa",
+                        "surface-container-high": "#1c2b3c",
+                        "error": "#ffb4ab",
+                        "primary-container": "#25e6d1",
+                        "on-primary-fixed-variant": "#005048",
+                        "primary-fixed": "#4bfbe6",
+                        "secondary-fixed-dim": "#c4c0ff",
+                        "outline": "#849490",
+                        "tertiary-container": "#ffc456",
+                        "tertiary": "#ffe7c2",
+                        "on-surface-variant": "#bacac6",
+                        "secondary-fixed": "#e3dfff",
+                        "surface-bright": "#2c3a4c",
+                        "on-secondary-fixed": "#120068",
+                        "inverse-primary": "#006a60",
+                        "secondary": "#c4c0ff",
+                        "surface-container-highest": "#273647",
+                        "on-tertiary-fixed": "#271900",
+                        "on-secondary-container": "#b5b0ff",
+                        "secondary-container": "#3b27ca",
+                        "on-secondary": "#2200a3",
+                        "on-tertiary-container": "#745100",
+                        "on-background": "#d4e4fa",
+                        "surface-dim": "#051424",
+                        "on-error-container": "#ffdad6",
+                        "surface-tint": "#09deca",
+                        "on-primary": "#003731",
+                        "background": "#051424",
+                        "on-primary-container": "#006359",
+                        "on-error": "#690005",
+                        "on-primary-fixed": "#00201c",
+                        "primary-fixed-dim": "#09deca",
+                        "tertiary-fixed": "#ffdea9",
+                        "surface-container-lowest": "#010f1f",
+                        "primary": "#81ffec",
+                        "on-secondary-fixed-variant": "#3823c8",
+                        "tertiary-fixed-dim": "#f7bd50",
+                        "error-container": "#93000a",
+                        "surface": "#051424",
+                        "surface-container": "#122131",
+                        "surface-container-low": "#0d1c2d",
+                        "surface-variant": "#273647"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "1rem",
+                        "lg": "2rem",
+                        "xl": "3rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "lg": "24px",
+                        "xxl": "64px",
+                        "margin-mobile": "20px",
+                        "md": "16px",
+                        "unit": "4px",
+                        "xl": "40px",
+                        "xs": "4px",
+                        "sm": "8px",
+                        "gutter": "24px",
+                        "margin-desktop": "120px"
+                    },
+                    "fontFamily": {
+                        "display-lg": ["Inter"],
+                        "label-caps": ["Inter"],
+                        "title-1-mobile": ["Inter"],
+                        "headline": ["Inter"],
+                        "title-1": ["Inter"],
+                        "number-xl": ["Inter"],
+                        "caption": ["Inter"],
+                        "body": ["Inter"]
+                    },
+                    "fontSize": {
+                        "display-lg": ["48px", { "lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "label-caps": ["12px", { "lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "600" }],
+                        "title-1-mobile": ["28px", { "lineHeight": "34px", "fontWeight": "700" }],
+                        "headline": ["17px", { "lineHeight": "24px", "fontWeight": "600" }],
+                        "title-1": ["34px", { "lineHeight": "42px", "letterSpacing": "-0.01em", "fontWeight": "700" }],
+                        "number-xl": ["40px", { "lineHeight": "48px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "caption": ["13px", { "lineHeight": "18px", "fontWeight": "400" }],
+                        "body": ["17px", { "lineHeight": "26px", "fontWeight": "400" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        body { background-color: #051424; color: #d4e4fa; }
+        .glass-panel { background: rgba(13, 28, 45, 0.7); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        .glow-primary { box-shadow: 0 0 24px rgba(129, 255, 236, 0.3); }
+        .glow-secondary { box-shadow: 0 0 24px rgba(196, 192, 255, 0.2); }
+        .text-glow { text-shadow: 0 0 16px rgba(129, 255, 236, 0.4); }
+        .radial-gradient-bg { background: radial-gradient(circle at top right, rgba(129, 255, 236, 0.05) 0%, transparent 40%); }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="antialiased min-h-screen flex flex-col font-body text-body radial-gradient-bg bg-surface-container-lowest">
+<!-- TopAppBar -->
+<header class="fixed top-0 w-full z-50 bg-surface/70 dark:bg-surface/70 backdrop-blur-xl border-b border-white/10 flex justify-between items-center px-margin-mobile h-16 transition-opacity duration-300 dark:bg-surface-container-lowest/70">
+<div class="flex items-center gap-md">
+<img class="w-8 h-8 rounded-full object-cover border border-outline-variant" data-alt="A small, stylized profile avatar of a young professional set against a deep dark background with subtle cyan lighting highlights on the edge, creating a sleek tech aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCc2BmUFMNwVQDyXZZQaUyJ-X0Q-2Mu8v0efxEn5XhU8tAc8sJlW7J-jKDWr_UTyhY7EvqxONNwFiAV3du4JD8Xhm7JWWr2U-NqEBsN1b6sXYiNLiJK2o1yLKcGdGxqkrUlpxMNXTq5OGHTG8p_ajlFBPHN96d1uTvyu2xaQuxgB8AfOZHLRp4K_886wb9gKWGFDYTDria0J4-fb49VWAWqZItwVThQysbt5LUblwvLAn9zWthUeoHX">
+</div>
+<div class="font-display-lg text-display-lg tracking-tighter text-primary dark:text-primary text-[24px] leading-none">FOCUS</div>
+<div class="flex items-center gap-md text-primary hover:opacity-80 cursor-pointer">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">settings</span>
+</div>
+</header>
+<!-- Main Content Canvas -->
+<main class="flex-grow pt-xxl pb-xxl px-margin-mobile flex flex-col gap-xl max-w-[1440px] mx-auto w-full md:px-margin-desktop mt-8">
+<!-- Hero Metrics -->
+<section class="flex flex-col md:flex-row justify-between items-center gap-xl md:gap-gutter">
+<div class="flex flex-col items-start w-full md:w-1/2 gap-sm">
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-widest">Average Watch-Time</span>
+<div class="font-number-xl text-number-xl text-primary text-[64px] leading-tight text-glow">+8.4s</div>
+<div class="font-body text-body text-on-surface-variant mt-unit">Sustained attention growth this week</div>
+</div>
+<!-- Focus Score Circular Element -->
+<div class="w-full md:w-1/2 flex justify-center md:justify-end">
+<div class="relative w-48 h-48 flex items-center justify-center rounded-full glass-panel glow-secondary">
+<svg class="absolute inset-0 w-full h-full transform -rotate-90" viewBox="0 0 100 100">
+<circle cx="50" cy="50" fill="none" r="45" stroke="rgba(255,255,255,0.05)" stroke-width="2"></circle>
+<circle cx="50" cy="50" fill="none" r="45" stroke="#c4c0ff" stroke-dasharray="283" stroke-dashoffset="73" stroke-linecap="round" stroke-width="2"></circle>
+</svg>
+<div class="flex flex-col items-center">
+<span class="font-number-xl text-number-xl text-on-surface leading-none">74</span>
+<span class="font-label-caps text-label-caps text-secondary mt-unit">Focus Score</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Quote Area -->
+<section class="py-lg px-md md:px-xl border-l-2 border-primary/30">
+<p class="font-headline text-headline italic text-on-surface-variant max-w-2xl text-xl leading-relaxed font-light">
+                "What destroyed your attention will now help you <span class="text-primary text-glow font-normal not-italic">rebuild it.</span>"
+            </p>
+</section>
+<!-- Intent Search -->
+<section class="flex flex-col gap-md">
+<div class="relative group">
+<span class="material-symbols-outlined absolute left-md top-1/2 transform -translate-y-1/2 text-on-surface-variant/50 z-10">search</span>
+<input class="w-full bg-surface-container-high text-on-surface font-body text-body py-lg pl-xl pr-md rounded-full border border-outline-variant/30 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/50 transition-all placeholder:text-on-surface-variant/40 glass-panel bg-surface-container-low/70" placeholder="What do you want to watch?" type="text">
+</div>
+<div class="flex flex-wrap gap-sm px-sm">
+<span class="font-label-caps text-label-caps text-on-surface-variant/50 mr-sm py-sm">Recent:</span>
+<button class="px-md py-sm rounded-full border border-outline-variant text-on-surface-variant font-caption text-caption hover:bg-surface-container-highest hover:text-primary transition-colors">Science</button>
+<button class="px-md py-sm rounded-full border border-outline-variant text-on-surface-variant font-caption text-caption hover:bg-surface-container-highest hover:text-primary transition-colors">Space</button>
+</div>
+</section>
+<!-- Primary Action -->
+<section class="mt-auto md:mt-xl flex justify-center pb-xxl">
+<button class="w-full md:w-auto bg-primary text-on-primary font-headline text-headline py-lg px-xxl rounded-full glow-primary hover:scale-[1.02] active:scale-95 transition-transform duration-200">
+                Start focused scrolling
+            </button>
+</section>
+</main>
+<!-- BottomNavBar -->
+<nav class="fixed bottom-0 w-full rounded-t-lg z-50 bg-surface-container-low/70 dark:bg-surface-container-low/70 backdrop-blur-2xl border-t border-white/10 shadow-[0_-8px_24px_rgba(9,222,202,0.1)] flex justify-around items-center h-20 px-xl md:hidden dark:bg-surface-container-lowest/70">
+<!-- Active Nav Item -->
+<a class="flex flex-col items-center justify-center bg-primary/20 text-primary rounded-full p-3 shadow-[0_0_16px_rgba(9,222,202,0.3)] hover:text-primary transition-colors scale-90 duration-200" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">home</span>
+</a>
+<!-- Inactive Nav Item -->
+<a class="flex flex-col items-center justify-center text-on-surface-variant/50 p-3 hover:text-primary transition-colors" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">insights</span>
+</a>
+</nav>
+
+
+</body></html>

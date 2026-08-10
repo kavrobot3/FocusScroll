@@ -2,6 +2,23 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --c-primary-bg: #051424;
+  --c-primary-dark: #010f1f;
+  --c-primary-surface: #122131;
+  --c-primary-surface-high: #1c2b3c;
+  --c-primary-surface-highest: #273647;
+
+  --c-secondary-accent: #81ffec;
+  --c-secondary-glow: rgba(129, 255, 236, 0.35);
+  --c-secondary-glow-faint: rgba(129, 255, 236, 0.15);
+  --c-secondary-on-text: #003731;
+
+  --c-tertiary-text: #d4e4fa;
+  --c-tertiary-muted: rgba(212, 228, 250, 0.65);
+  --c-tertiary-faint: rgba(212, 228, 250, 0.15);
+}
+
 * {
   -webkit-tap-highlight-color: transparent;
 }
@@ -10,9 +27,115 @@ html,
 body {
   margin: 0;
   padding: 0;
-  background: #050506;
+  background-color: var(--c-primary-bg);
+  color: var(--c-tertiary-text);
   font-family: 'Inter', system-ui, sans-serif;
   overscroll-behavior: none;
+}
+
+/* Backgrounds driven by Primary */
+:not(.shorts-feed):not(.shorts-feed *) .bg-surface,
+:not(.shorts-feed):not(.shorts-feed *) .bg-surface-container-lowest,
+:not(.shorts-feed):not(.shorts-feed *) .bg-ink-950,
+:not(.shorts-feed):not(.shorts-feed *) .bg-\[\#051424\] {
+  background-color: var(--c-primary-bg) !important;
+}
+
+:not(.shorts-feed):not(.shorts-feed *) .bg-surface-container-low,
+:not(.shorts-feed):not(.shorts-feed *) .bg-surface-container,
+:not(.shorts-feed):not(.shorts-feed *) .bg-ink-900,
+:not(.shorts-feed):not(.shorts-feed *) .bg-ink-850 {
+  background-color: var(--c-primary-surface) !important;
+}
+
+:not(.shorts-feed):not(.shorts-feed *) .bg-surface-container-high,
+:not(.shorts-feed):not(.shorts-feed *) .bg-surface-container-highest,
+:not(.shorts-feed):not(.shorts-feed *) .bg-ink-800,
+:not(.shorts-feed):not(.shorts-feed *) .bg-ink-700 {
+  background-color: var(--c-primary-surface-high) !important;
+}
+
+.glass-panel {
+  background: var(--c-primary-surface) !important;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--c-tertiary-faint) !important;
+}
+
+.glass-overlay {
+  background: var(--c-primary-dark) !important;
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+}
+
+/* Secondary Accent Color Overrides */
+:not(.shorts-feed):not(.shorts-feed *) .text-cyan-400,
+:not(.shorts-feed):not(.shorts-feed *) .text-cyan-300,
+:not(.shorts-feed):not(.shorts-feed *) .text-primary {
+  color: var(--c-secondary-accent) !important;
+}
+
+:not(.shorts-feed):not(.shorts-feed *) .bg-cyan-400,
+:not(.shorts-feed):not(.shorts-feed *) .bg-primary {
+  background-color: var(--c-secondary-accent) !important;
+  color: var(--c-secondary-on-text) !important;
+}
+
+:not(.shorts-feed):not(.shorts-feed *) .border-cyan-500,
+:not(.shorts-feed):not(.shorts-feed *) .border-cyan-400,
+:not(.shorts-feed):not(.shorts-feed *) .border-cyan-500\/30,
+:not(.shorts-feed):not(.shorts-feed *) .border-cyan-500\/20,
+:not(.shorts-feed):not(.shorts-feed *) .border-cyan-400\/30 {
+  border-color: var(--c-secondary-accent) !important;
+}
+
+.glow-primary,
+.glow-active {
+  box-shadow: 0 0 24px var(--c-secondary-glow) !important;
+}
+
+.glow-secondary {
+  box-shadow: 0 0 24px var(--c-secondary-glow-faint) !important;
+}
+
+.text-glow,
+.glow-text {
+  text-shadow: 0 0 16px var(--c-secondary-glow) !important;
+}
+
+.radial-gradient-bg {
+  background: radial-gradient(circle at top right, var(--c-secondary-glow-faint) 0%, transparent 45%) !important;
+}
+
+/* Tertiary Text Overrides */
+:not(.shorts-feed):not(.shorts-feed *) .text-on-surface,
+:not(.shorts-feed):not(.shorts-feed *) .text-white {
+  color: var(--c-tertiary-text) !important;
+}
+
+:not(.shorts-feed):not(.shorts-feed *) .text-on-surface-variant,
+:not(.shorts-feed):not(.shorts-feed *) .text-white\/80,
+:not(.shorts-feed):not(.shorts-feed *) .text-white\/70,
+:not(.shorts-feed):not(.shorts-feed *) .text-white\/60,
+:not(.shorts-feed):not(.shorts-feed *) .text-white\/50,
+:not(.shorts-feed):not(.shorts-feed *) .text-white\/40 {
+  color: var(--c-tertiary-muted) !important;
+}
+
+:not(.shorts-feed):not(.shorts-feed *) .border-white\/10,
+:not(.shorts-feed):not(.shorts-feed *) .border-white\/5,
+:not(.shorts-feed):not(.shorts-feed *) .border-white\/20,
+:not(.shorts-feed):not(.shorts-feed *) .border-outline-variant\/60 {
+  border-color: var(--c-tertiary-faint) !important;
+}
+
+:not(.shorts-feed):not(.shorts-feed *) .bg-white\/5,
+:not(.shorts-feed):not(.shorts-feed *) .bg-white\/10 {
+  background-color: var(--c-tertiary-faint) !important;
+}
+
+.progress-bar-fill {
+  transition: width 0.1s linear;
 }
 
 #root {

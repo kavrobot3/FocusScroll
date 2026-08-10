@@ -98,13 +98,13 @@ export function useYTPlayer(
 
     if (!options.mount || !containerEl) return;
 
-    // Watchdog timer: if player fails to get ready within 10s, trigger error recovery
+    // Watchdog timer: if player fails to get ready within 5s, trigger error recovery
     const watchdog = setTimeout(() => {
       if (!cancelled && !ready) {
         setFailed(true);
         onErrorRef.current?.();
       }
-    }, 10000);
+    }, 5000);
 
     loadYouTubeAPI()
       .then((YT) => {
@@ -117,8 +117,11 @@ export function useYTPlayer(
         containerEl.appendChild(el);
 
         const quality = getRecommendedQuality();
+        const originParam = typeof window !== 'undefined' ? window.location.origin : undefined;
+
         createdPlayer = new YT.Player(el, {
           videoId: options.videoId,
+          host: 'https://www.youtube.com',
           playerVars: {
             autoplay: options.active ? 1 : 0,
             mute: globalIsMuted || !options.active ? 1 : 0,
@@ -133,6 +136,7 @@ export function useYTPlayer(
             loop: 1,
             suggestedQuality: quality,
             playlist: options.videoId,
+            origin: originParam,
           },
           events: {
             onReady: (e) => {
@@ -167,9 +171,10 @@ export function useYTPlayer(
               setReady(true);
               onReadyRef.current?.();
             },
-            onError: () => {
+            onError: (e) => {
               clearTimeout(watchdog);
               if (cancelled) return;
+              console.warn('YouTube Player error code:', e?.data);
               setFailed(true);
               onErrorRef.current?.();
             },
@@ -179,7 +184,20 @@ export function useYTPlayer(
               if (e.data === 1) {
                 setReady(true);
                 setIsPlaying(true);
-              } else if (e.data === 2 || e.data === 0) {
+              } else if (e.data === 0) {
+                // ENDED: Loop immediately if active and user hasn't paused
+                if (options.active && !userPausedRef.current) {
+                  try {
+                    e.target.seekTo(0);
+                    e.target.playVideo();
+                    setIsPlaying(true);
+                  } catch {
+                    setIsPlaying(false);
+                  }
+                } else {
+                  setIsPlaying(false);
+                }
+              } else if (e.data === 2) {
                 setIsPlaying(false);
               }
             },
@@ -288,8 +306,16 @@ export function useYTPlayer(
             }
             setIsPlaying(false);
           } else {
-            // User wants it playing: force play if paused/cued/unstarted
-            if (state === 2 /* PAUSED */ || state === 5 /* CUED */ || state === -1 /* UNSTARTED */) {
+            // User wants it playing: force play if paused/cued/unstarted/ended
+            if (
+              state === 2 /* PAUSED */ ||
+              state === 5 /* CUED */ ||
+              state === -1 /* UNSTARTED */ ||
+              state === 0 /* ENDED */
+            ) {
+              if (state === 0) {
+                p.seekTo(0);
+              }
               p.playVideo();
               setIsPlaying(true);
               if (!globalIsMuted) {

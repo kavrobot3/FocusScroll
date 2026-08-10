@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { ChevronLeft, Volume2, VolumeX, ExternalLink, Search, X, Lock } from 'lucide-react';
+import { Volume2, VolumeX, ExternalLink } from 'lucide-react';
 import VIDEOS from '@/lib/videos';
 import {
   getTargetDuration,
@@ -19,14 +19,16 @@ import {
 } from '@/lib/youtube';
 import useYTPlayer from '@/lib/useYTPlayer';
 import Celebration from '@/components/Celebration';
+import SearchOverlay from '@/components/SearchOverlay';
 
 interface Props {
   onExit: () => void;
+  initialTopic?: string;
 }
 
 type FeedMode = 'loading' | 'youtube' | 'fallback';
 
-export default function ShortsFeed({ onExit }: Props) {
+export default function ShortsFeed({ onExit, initialTopic }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const [showHint, setShowHint] = useState(true);
@@ -39,15 +41,14 @@ export default function ShortsFeed({ onExit }: Props) {
 
   // Search state
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [activeSearchTerm, setActiveSearchTerm] = useState<string | null>(null);
+  const [activeSearchTerm, setActiveSearchTerm] = useState<string | null>(initialTopic || null);
 
-  // Forced timer state & celebration
+  // Forced timer state & threshold notice
   const [lockNotice, setLockNotice] = useState(false);
+  const [remainingSecs, setRemainingSecs] = useState(0);
   const [celebrationMsg, setCelebrationMsg] = useState<string | null>(null);
   const celebratedMilestonesRef = useRef<Set<number>>(new Set());
 
-  const [activePlayerReady, setActivePlayerReady] = useState(false);
   const activeWatchSecRef = useRef<number>(0);
   const isPlayingRef = useRef<boolean>(false);
   const lockNoticeTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -67,24 +68,8 @@ export default function ShortsFeed({ onExit }: Props) {
     scrollAttemptRef.current = 0;
   }, [activeIndex]);
 
-  // Reset active player ready status whenever active index changes
-  useEffect(() => {
-    setActivePlayerReady(false);
-  }, [activeIndex]);
-
   const handleActiveReady = useCallback(() => {
-    setActivePlayerReady(true);
-  }, []);
-  const lastTapTimeRef = useRef<number>(0);
-
-  const triggerLockNotice = useCallback(() => {
-    setLockNotice(true);
-    if (lockNoticeTimerRef.current) clearTimeout(lockNoticeTimerRef.current);
-    lockNoticeTimerRef.current = setTimeout(() => setLockNotice(false), 1400);
-  }, []);
-
-  const handleIsPlayingChange = useCallback((playing: boolean) => {
-    isPlayingRef.current = playing;
+    // Player ready handler
   }, []);
 
   const getForcedWaitTime = useCallback(
@@ -102,6 +87,19 @@ export default function ShortsFeed({ onExit }: Props) {
     [isYouTube, ytQueue]
   );
 
+  const triggerLockNotice = useCallback(() => {
+    const forcedWait = getForcedWaitTime(activeIndex);
+    const rem = Math.max(1, Math.ceil(forcedWait - activeWatchSecRef.current));
+    setRemainingSecs(rem);
+    setLockNotice(true);
+    if (lockNoticeTimerRef.current) clearTimeout(lockNoticeTimerRef.current);
+    lockNoticeTimerRef.current = setTimeout(() => setLockNotice(false), 2000);
+  }, [activeIndex, getForcedWaitTime]);
+
+  const handleIsPlayingChange = useCallback((playing: boolean) => {
+    isPlayingRef.current = playing;
+  }, []);
+
   const isTimerLocked = useCallback(() => {
     const forcedWait = getForcedWaitTime(activeIndex);
     return activeWatchSecRef.current < forcedWait;
@@ -114,7 +112,10 @@ export default function ShortsFeed({ onExit }: Props) {
 
     const interval = setInterval(() => {
       if (document.visibilityState === 'visible') {
-        const video = isYouTubeRef.current && ytQueueRef.current.length > 0 ? ytQueueRef.current[activeIndex % ytQueueRef.current.length] : null;
+        const video =
+          isYouTubeRef.current && ytQueueRef.current.length > 0
+            ? ytQueueRef.current[activeIndex % ytQueueRef.current.length]
+            : null;
         const maxDuration = video?.durationSec && video.durationSec > 0 ? video.durationSec : 60;
         if (activeWatchSecRef.current < maxDuration) {
           activeWatchSecRef.current = Math.round((activeWatchSecRef.current + 0.1) * 10) / 10;
@@ -174,17 +175,14 @@ export default function ShortsFeed({ onExit }: Props) {
   }, []);
 
   useEffect(() => {
-    loadFeed();
-  }, [loadFeed]);
+    loadFeed(initialTopic);
+  }, [loadFeed, initialTopic]);
 
-  // Handle Search Submission
-  const handleSearchSubmit = () => {
-    const clean = searchQuery.trim();
-    if (!clean) return;
-    addStoredSearch(clean);
-    setActiveSearchTerm(clean);
+  const handleSelectTopic = (topic: string) => {
+    addStoredSearch(topic);
+    setActiveSearchTerm(topic);
     setIsSearchOpen(false);
-    loadFeed(clean);
+    loadFeed(topic);
   };
 
   const recordCurrent = useCallback(
@@ -235,9 +233,6 @@ export default function ShortsFeed({ onExit }: Props) {
 
   const scrollToIndex = useCallback(
     (index: number) => {
-      const container = containerRef.current;
-      if (!container) return;
-
       if (index > activeIndex && isTimerLocked()) {
         triggerLockNotice();
         return;
@@ -245,16 +240,13 @@ export default function ShortsFeed({ onExit }: Props) {
 
       if (index < 0 || index >= listLength) return;
 
-      const targetEl = container.children[index] as HTMLElement;
-      if (!targetEl) return;
       isScrollingRef.current = true;
-      container.scrollTo({ top: targetEl.offsetTop, behavior: 'smooth' });
       recordCurrent(activeIndex);
       setActiveIndex(index);
       setShowHint(false);
       setTimeout(() => {
         isScrollingRef.current = false;
-      }, 350);
+      }, 300);
     },
     [activeIndex, isTimerLocked, listLength, recordCurrent, triggerLockNotice]
   );
@@ -264,16 +256,6 @@ export default function ShortsFeed({ onExit }: Props) {
       scrollToIndex(activeIndex + 1);
     }
   }, [activeIndex, listLength, scrollToIndex]);
-
-  // Double tap handler on container
-  const handleContainerTap = () => {
-    const now = Date.now();
-    if (now - lastTapTimeRef.current < 300) {
-      // Double tap detected
-      setIsSearchOpen((prev) => !prev);
-    }
-    lastTapTimeRef.current = now;
-  };
 
   // Touch, wheel, and keyboard navigation handlers
   useEffect(() => {
@@ -392,11 +374,11 @@ export default function ShortsFeed({ onExit }: Props) {
 
   if (feedMode === 'loading') {
     return (
-      <div className="flex h-full w-full items-center justify-center bg-black">
+      <div className="flex h-screen w-screen items-center justify-center bg-background text-on-surface">
         <div className="flex flex-col items-center gap-4">
-          <div className="h-10 w-10 animate-spin rounded-full border-2 border-white/20 border-t-cyan-400" />
-          <span className="text-xs text-white/40 tracking-widest uppercase">
-            {activeSearchTerm ? `Searching "${activeSearchTerm}"...` : 'Refreshing feed...'}
+          <div className="h-10 w-10 animate-spin rounded-full border-2 border-white/20 border-t-primary" />
+          <span className="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-widest">
+            {activeSearchTerm ? `Curating "${activeSearchTerm}" feed...` : 'Initializing Focus Feed...'}
           </span>
         </div>
       </div>
@@ -404,54 +386,13 @@ export default function ShortsFeed({ onExit }: Props) {
   }
 
   return (
-    <div className="shorts-feed relative h-full w-full overflow-hidden bg-black select-none">
-      {/* Floating Search Bar Overlay with Backdrop */}
-      {isSearchOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-start justify-center pt-4 px-3 bg-black/60 backdrop-blur-sm animate-fade-in"
-          onClick={() => setIsSearchOpen(false)}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-md flex items-center gap-2 rounded-2xl bg-zinc-900/95 p-2.5 border border-white/20 shadow-2xl backdrop-blur-xl"
-          >
-            <Search size={18} className="ml-1 text-cyan-400 shrink-0" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleSearchSubmit();
-              }}
-              placeholder="Search topics (e.g. chess, tech, art)..."
-              className="w-full bg-transparent text-xs sm:text-sm text-white placeholder-white/40 focus:outline-none"
-              autoFocus
-            />
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                handleSearchSubmit();
-              }}
-              className="rounded-xl bg-cyan-500 px-3 py-1.5 text-xs font-semibold text-black transition hover:bg-cyan-400 active:scale-95 shrink-0"
-            >
-              Search
-            </button>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                setIsSearchOpen(false);
-              }}
-              className="p-1 text-white/60 hover:text-white shrink-0"
-            >
-              <X size={18} />
-            </button>
-          </div>
-        </div>
-      )}
+    <div className="shorts-feed fixed inset-0 z-50 h-screen w-screen overflow-hidden bg-background select-none font-body text-body text-on-surface">
+      {/* Search Overlay */}
+      <SearchOverlay
+        isOpen={isSearchOpen}
+        onClose={() => setIsSearchOpen(false)}
+        onSelectTopic={handleSelectTopic}
+      />
 
       {/* Celebration Modal */}
       <Celebration
@@ -460,83 +401,90 @@ export default function ShortsFeed({ onExit }: Props) {
         onClose={() => setCelebrationMsg(null)}
       />
 
-      {/* Locked Timer Subtle Overlay */}
+      {/* Refined Stitch Threshold Notice ("Stay with it — Xs remaining") */}
       {lockNotice && (
-        <div className="pointer-events-none absolute top-16 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 rounded-full bg-black/80 px-4 py-2 text-xs font-semibold text-amber-300 border border-amber-500/30 shadow-2xl backdrop-blur-md animate-bounce">
-          <Lock size={14} className="text-amber-400 shrink-0" />
-          <span>Hang-on until u are close to the target</span>
+        <div className="fixed bottom-12 left-1/2 -translate-x-1/2 z-50 glass-panel rounded-full px-6 py-3 flex items-center gap-3 border border-primary/40 glow-primary animate-fade-in shadow-2xl">
+          <span className="material-symbols-outlined text-primary text-[20px]">lock</span>
+          <span className="font-headline text-headline text-on-surface text-sm md:text-base font-semibold">
+            Stay with it — {remainingSecs}s remaining
+          </span>
         </div>
       )}
 
-      <div
-        ref={containerRef}
-        onClick={handleContainerTap}
-        className="h-full w-full overflow-hidden select-none"
-      >
-        {isYouTube
-          ? Array.from({ length: listLength }).map((_, i) => {
-              const video = ytQueue[i % ytQueue.length];
-              const isCurrentActive = i === activeIndex;
-              const isNextSlide = i === activeIndex + 1;
-              const windowed = isCurrentActive || (isNextSlide && activePlayerReady);
-              return (
-                <YouTubeSlide
-                  key={video.videoId + '-' + i}
-                  video={video}
-                  index={i}
-                  active={isCurrentActive}
-                  windowed={windowed}
-                  gradientSeed={i % 5}
-                  onAutoAdvance={handleAutoAdvance}
-                  onIsPlayingChange={handleIsPlayingChange}
-                  onActiveReady={handleActiveReady}
-                />
-              );
-            })
-          : Array.from({ length: listLength }).map((_, i) => (
-              <PexelsSlide
-                key={i}
-                src={VIDEOS[i % VIDEOS.length]}
-                index={i}
-                active={i === activeIndex}
-                gradientSeed={i % 5}
-                onIsPlayingChange={handleIsPlayingChange}
-                onActiveReady={handleActiveReady}
-              />
-            ))
-        }
-      </div>
-
-      {/* Header controls: Exit & Search toggle */}
-      <div className="absolute left-4 top-5 z-40 flex items-center gap-2">
+      {/* Top Header Overlay */}
+      <header className="fixed top-0 left-0 right-0 z-40 flex items-center justify-between p-4 md:p-6 bg-gradient-to-b from-black/80 via-black/30 to-transparent pointer-events-none">
         <button
           onClick={() => {
             recordCurrent(activeIndex);
             handleExitSession();
           }}
-          aria-label="Back"
-          className="flex h-9 w-9 items-center justify-center rounded-full bg-black/40 backdrop-blur-md text-white/80 transition hover:bg-black/60 active:scale-90 border border-white/10"
+          aria-label="Back to home"
+          className="pointer-events-auto p-2 rounded-full glass-panel text-on-surface hover:text-primary transition-colors flex items-center justify-center"
         >
-          <ChevronLeft size={20} />
+          <span className="material-symbols-outlined text-[24px]">arrow_back</span>
         </button>
 
+        <div className="pointer-events-auto px-4 py-1.5 rounded-full glass-panel text-xs font-semibold text-primary border border-primary/30 flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+          <span>{activeSearchTerm ? `${activeSearchTerm} feed` : 'Deep Focus'}</span>
+        </div>
+
         <button
-          onClick={() => setIsSearchOpen((prev) => !prev)}
-          aria-label="Search topics"
-          className="flex h-9 items-center gap-1.5 rounded-full bg-black/40 backdrop-blur-md px-3 text-xs font-medium text-white/80 transition hover:bg-black/60 active:scale-90 border border-white/10"
+          onClick={() => setIsSearchOpen(true)}
+          aria-label="Search"
+          className="pointer-events-auto p-2 rounded-full glass-panel text-on-surface hover:text-primary transition-colors flex items-center justify-center"
         >
-          <Search size={15} className="text-cyan-400" />
-          <span className="hidden sm:inline">Search</span>
+          <span className="material-symbols-outlined text-[24px]">search</span>
         </button>
+      </header>
+
+      {/* Scroll Container */}
+      <div
+        ref={containerRef}
+        className="h-full w-full select-none transition-transform duration-300 ease-out flex flex-col"
+        style={{
+          transform: `translate3d(0, -${activeIndex * 100}%, 0)`,
+          willChange: 'transform',
+        }}
+      >
+        {isYouTube
+          ? Array.from({ length: listLength }).map((_, i) => {
+              const video = ytQueue[i % ytQueue.length];
+              const isCurrentActive = i === activeIndex;
+              return (
+                <div key={video.videoId + '-' + i} className="h-full w-full shrink-0">
+                  <YouTubeSlide
+                    video={video}
+                    index={i}
+                    active={isCurrentActive}
+                    windowed={isCurrentActive}
+                    gradientSeed={i % 5}
+                    onAutoAdvance={handleAutoAdvance}
+                    onIsPlayingChange={handleIsPlayingChange}
+                    onActiveReady={handleActiveReady}
+                  />
+                </div>
+              );
+            })
+          : Array.from({ length: listLength }).map((_, i) => (
+              <div key={i} className="h-full w-full shrink-0">
+                <PexelsSlide
+                  src={VIDEOS[i % VIDEOS.length]}
+                  index={i}
+                  active={i === activeIndex}
+                  gradientSeed={i % 5}
+                  onIsPlayingChange={handleIsPlayingChange}
+                  onActiveReady={handleActiveReady}
+                />
+              </div>
+            ))}
       </div>
 
       {showHint && (
-        <div className="pointer-events-none absolute bottom-24 left-1/2 -translate-x-1/2 z-40 animate-fade-in">
-          <div className="flex flex-col items-center gap-2 text-white/50">
-            <span className="text-xs tracking-widest uppercase">Swipe up</span>
-            <div className="flex h-10 w-6 items-start justify-center rounded-full border border-white/30 p-1">
-              <div className="h-2 w-1 rounded-full bg-white/50 animate-bounce" />
-            </div>
+        <div className="pointer-events-none fixed bottom-20 left-1/2 -translate-x-1/2 z-40 animate-fade-in">
+          <div className="flex flex-col items-center gap-1 text-on-surface-variant/70">
+            <span className="font-label-caps text-[10px] tracking-widest uppercase">Swipe up</span>
+            <span className="material-symbols-outlined text-[20px] animate-bounce">keyboard_arrow_up</span>
           </div>
         </div>
       )}
@@ -628,7 +576,7 @@ function YouTubeSlide({
   const targetSec = Math.round(getTargetDuration(index));
   const isInitialCalibrated = isCalibrated();
   const calLimit = isInitialCalibrated ? 4 : 13;
-  const targetLabel = index < calLimit ? `Target: Calibrating (${index + 1}/${calLimit})` : `Target: ${targetSec}s`;
+  const targetLabel = index < calLimit ? `Calibrating (${index + 1}/${calLimit})` : `Target: ${targetSec}s`;
   const posterUrl = video.thumbnail || `https://i.ytimg.com/vi/${video.videoId}/hqdefault.jpg`;
 
   return (
@@ -671,15 +619,15 @@ function YouTubeSlide({
       {/* Loading spinner overlay before video starts playing */}
       {active && !isPlaying && !failed && !autoSkipped && (
         <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-black/20 backdrop-blur-[1px]">
-          <div className="h-10 w-10 animate-spin rounded-full border-2 border-white/20 border-t-cyan-400" />
+          <div className="h-10 w-10 animate-spin rounded-full border-2 border-white/20 border-t-primary" />
         </div>
       )}
 
       {/* Dark gradient overlays */}
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-black/60" />
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/50 via-transparent to-black/80" />
 
       {/* Right side controls: Sound, Open in YT */}
-      <div className="absolute right-3 bottom-20 z-30 flex flex-col items-center gap-4">
+      <div className="absolute right-4 bottom-24 z-30 flex flex-col items-center gap-5">
         {/* Sound/Mute Button */}
         <button
           onClick={(e) => {
@@ -687,48 +635,53 @@ function YouTubeSlide({
             toggleMute();
           }}
           aria-label={isMuted ? 'Unmute video' : 'Mute video'}
-          className="flex flex-col items-center gap-1 text-white hover:text-white active:scale-90 transition"
+          className="flex flex-col items-center gap-1.5 text-on-surface hover:text-primary transition"
         >
-          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-black/50 backdrop-blur-md border border-white/20 shadow-lg">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full glass-panel border border-white/20 shadow-lg">
             {isMuted ? (
-              <VolumeX size={20} className="text-red-400" />
+              <VolumeX size={20} className="text-error" />
             ) : (
-              <Volume2 size={20} className="text-cyan-400" />
+              <Volume2 size={20} className="text-primary" />
             )}
           </div>
-          <span className="text-[11px] font-semibold text-white tracking-wide drop-shadow">{isMuted ? 'Muted' : 'Sound'}</span>
+          <span className="font-label-caps text-[11px] text-on-surface font-medium drop-shadow">
+            {isMuted ? 'Muted' : 'Sound'}
+          </span>
         </button>
 
         {/* Open in YT Button */}
         <button
           onClick={openYouTube}
           aria-label="Open in YouTube app"
-          className="flex flex-col items-center gap-1 text-white hover:text-white active:scale-90 transition"
+          className="flex flex-col items-center gap-1.5 text-on-surface hover:text-primary transition"
         >
-          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-red-600/90 backdrop-blur-md border border-red-400/30 shadow-lg text-white">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-600/90 border border-red-400/30 shadow-lg text-white">
             <ExternalLink size={18} />
           </div>
-          <span className="text-[11px] font-semibold text-white/90 tracking-wide drop-shadow">YouTube</span>
+          <span className="font-label-caps text-[11px] text-on-surface/90 font-medium drop-shadow">
+            YouTube
+          </span>
         </button>
       </div>
 
-      {/* Video metadata on bottom left */}
-      <div className="absolute left-4 bottom-10 z-30 max-w-[250px] text-white">
-        <div className="inline-flex items-center gap-1.5 rounded-full bg-cyan-500/25 px-2.5 py-0.5 text-[11px] font-semibold text-cyan-300 border border-cyan-400/40 mb-2 shadow-sm backdrop-blur-sm">
+      {/* Refined video metadata on bottom left */}
+      <div className="absolute left-4 bottom-12 z-30 max-w-[280px] md:max-w-md text-on-surface">
+        <div className="inline-flex items-center gap-2 rounded-full glass-panel px-3 py-1 text-xs font-semibold text-primary border border-primary/30 mb-2 shadow-md backdrop-blur-md">
+          <span className="material-symbols-outlined text-[16px]">schedule</span>
           <span>{targetLabel}</span>
         </div>
-        <h3 className="text-sm font-bold text-white line-clamp-2 leading-snug drop-shadow-md">
+        <h3 className="font-headline text-headline text-on-surface line-clamp-2 leading-snug drop-shadow-md">
           {video.title}
         </h3>
-        <p className="mt-1 text-xs text-white/90 font-medium drop-shadow-md">
+        <p className="mt-1 font-caption text-caption text-on-surface-variant font-medium drop-shadow-md">
           {video.channelTitle}
         </p>
       </div>
 
-      {/* Small red YouTube progress bar at the bottom */}
-      <div className="absolute bottom-0 left-0 right-0 z-30 h-[3px] bg-white/20">
+      {/* Progress bar at the bottom */}
+      <div className="absolute bottom-0 left-0 right-0 z-30 h-1 bg-white/10">
         <div
-          className="h-full bg-red-600 transition-all duration-100 ease-linear shadow-[0_0_8px_rgba(255,0,0,0.9)]"
+          className="h-full bg-primary transition-all duration-100 ease-linear shadow-[0_0_12px_rgba(129,255,236,0.8)]"
           style={{ width: `${progressPercent}%` }}
         />
       </div>
@@ -765,7 +718,7 @@ function PexelsSlide({
   const targetSec = Math.round(getTargetDuration(index));
   const isInitialCalibrated = isCalibrated();
   const calLimit = isInitialCalibrated ? 4 : 13;
-  const targetLabel = index < calLimit ? `Target: Calibrating (${index + 1}/${calLimit})` : `Target: ${targetSec}s`;
+  const targetLabel = index < calLimit ? `Calibrating (${index + 1}/${calLimit})` : `Target: ${targetSec}s`;
 
   useEffect(() => {
     const v = localRef.current;
@@ -854,53 +807,56 @@ function PexelsSlide({
       )}
 
       {/* Dark gradient overlays */}
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/50" />
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/50 via-transparent to-black/80" />
 
-      {/* Right side controls: Sound, YouTube */}
-      <div className="absolute right-3 bottom-20 z-30 flex flex-col items-center gap-4">
-        {/* Sound/Mute Button */}
+      {/* Right side controls */}
+      <div className="absolute right-4 bottom-24 z-30 flex flex-col items-center gap-5">
         <button
           onClick={(e) => {
             e.stopPropagation();
             toggleMute();
           }}
           aria-label={isMuted ? 'Unmute video' : 'Mute video'}
-          className="flex flex-col items-center gap-1 text-white hover:text-white active:scale-90 transition"
+          className="flex flex-col items-center gap-1.5 text-on-surface hover:text-primary transition"
         >
-          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-black/50 backdrop-blur-md border border-white/20 shadow-lg">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full glass-panel border border-white/20 shadow-lg">
             {isMuted ? (
-              <VolumeX size={20} className="text-red-400" />
+              <VolumeX size={20} className="text-error" />
             ) : (
-              <Volume2 size={20} className="text-cyan-400" />
+              <Volume2 size={20} className="text-primary" />
             )}
           </div>
-          <span className="text-[11px] font-semibold text-white tracking-wide drop-shadow">{isMuted ? 'Muted' : 'Sound'}</span>
+          <span className="font-label-caps text-[11px] text-on-surface font-medium drop-shadow">
+            {isMuted ? 'Muted' : 'Sound'}
+          </span>
         </button>
 
-        {/* Open in YT Button */}
         <button
           onClick={openYouTube}
           aria-label="Open in YouTube"
-          className="flex flex-col items-center gap-1 text-white hover:text-white active:scale-90 transition"
+          className="flex flex-col items-center gap-1.5 text-on-surface hover:text-primary transition"
         >
-          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-red-600/90 backdrop-blur-md border border-red-400/30 shadow-lg text-white">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-600/90 border border-red-400/30 shadow-lg text-white">
             <ExternalLink size={18} />
           </div>
-          <span className="text-[11px] font-semibold text-white/90 tracking-wide drop-shadow">YouTube</span>
+          <span className="font-label-caps text-[11px] text-on-surface/90 font-medium drop-shadow">
+            YouTube
+          </span>
         </button>
       </div>
 
       {/* Target badge on bottom left */}
-      <div className="absolute left-4 bottom-10 z-30 text-white">
-        <div className="inline-flex items-center gap-1.5 rounded-full bg-cyan-500/25 px-2.5 py-0.5 text-[11px] font-semibold text-cyan-300 border border-cyan-400/40 shadow-sm backdrop-blur-sm">
+      <div className="absolute left-4 bottom-12 z-30 text-on-surface">
+        <div className="inline-flex items-center gap-2 rounded-full glass-panel px-3 py-1 text-xs font-semibold text-primary border border-primary/30 shadow-md backdrop-blur-md">
+          <span className="material-symbols-outlined text-[16px]">schedule</span>
           <span>{targetLabel}</span>
         </div>
       </div>
 
-      {/* Small red progress bar at bottom */}
-      <div className="absolute bottom-0 left-0 right-0 z-30 h-[3px] bg-white/20">
+      {/* Progress bar */}
+      <div className="absolute bottom-0 left-0 right-0 z-30 h-1 bg-white/10">
         <div
-          className="h-full bg-red-600 transition-all duration-100 ease-linear shadow-[0_0_8px_rgba(255,0,0,0.9)]"
+          className="h-full bg-primary transition-all duration-100 ease-linear shadow-[0_0_12px_rgba(129,255,236,0.8)]"
           style={{ width: `${progressPercent}%` }}
         />
       </div>
@@ -909,10 +865,9 @@ function PexelsSlide({
 }
 
 const GRADIENTS = [
-  ['#0a4d5e', '#06b6d4', '#155e75'],
-  ['#1a3a2e', '#10b981', '#064e3b'],
-  ['#3b1f4d', '#8b5cf6', '#4c1d6b'],
-  ['#4d2a1a', '#f59e0b', '#7c2d12'],
-  ['#1a2a4d', '#3b82f6', '#1e3a8a'],
+  ['#051424', '#09deca', '#122131'],
+  ['#11151D', '#81ffec', '#1c2b3c'],
+  ['#122131', '#c4c0ff', '#273647'],
+  ['#0d1c2d', '#ffdea9', '#1c2b3c'],
+  ['#051424', '#3b27ca', '#273647'],
 ];
-

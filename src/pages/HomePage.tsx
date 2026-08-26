@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Palette } from 'lucide-react';
+import { Palette, Chrome, Download, Sparkles } from 'lucide-react';
 import {
   getYouTubeApiKey,
   isQuotaExhausted,
@@ -18,6 +18,8 @@ import {
 import SearchOverlay from '@/components/SearchOverlay';
 import CustomizeModal from '@/components/CustomizeModal';
 import CreditsModal from '@/components/CreditsModal';
+import ExtensionInstallModal from '@/components/ExtensionInstallModal';
+import { generateAndDownloadExtensionZip } from '@/lib/extensionZip';
 
 interface Props {
   onEnterFeed: (topic?: string) => void;
@@ -31,6 +33,7 @@ export default function HomePage({ onEnterFeed }: Props) {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isCustomizeOpen, setIsCustomizeOpen] = useState(false);
   const [isCreditsOpen, setIsCreditsOpen] = useState(false);
+  const [isExtensionModalOpen, setIsExtensionModalOpen] = useState(false);
 
   const avgDwell = getAverageDwell();
   const weeklyGrowth = getWeeklyGrowthSeconds();
@@ -62,6 +65,15 @@ export default function HomePage({ onEnterFeed }: Props) {
 
   const handleSelectTopic = (topic: string) => {
     onEnterFeed(topic);
+  };
+
+  const handleInstallExtension = async () => {
+    setIsExtensionModalOpen(true);
+    try {
+      await generateAndDownloadExtensionZip();
+    } catch (err) {
+      console.error('Failed downloading extension zip:', err);
+    }
   };
 
   return (
@@ -193,14 +205,53 @@ export default function HomePage({ onEnterFeed }: Props) {
           </div>
         </section>
 
-        {/* Primary Action */}
-        <section className="mt-4 flex justify-center pb-6">
+        {/* Primary Action & Chrome Extension CTA */}
+        <section className="mt-4 flex flex-col items-center gap-4 pb-6">
           <button
             onClick={() => onEnterFeed()}
-            className="w-full md:w-auto bg-primary text-on-primary font-headline text-headline py-md md:py-lg px-xxl rounded-full glow-primary hover:scale-[1.02] active:scale-95 transition-transform duration-200 font-semibold tracking-wide text-center"
+            className="w-full md:w-auto bg-primary text-on-primary font-headline text-headline py-md md:py-lg px-xxl rounded-full glow-primary hover:scale-[1.02] active:scale-95 transition-transform duration-200 font-semibold tracking-wide text-center cursor-pointer shadow-lg"
           >
             Start focused scrolling
           </button>
+
+          {/* Shiny Chrome Extension Install Card / Button */}
+          <div className="w-full max-w-md relative group mt-1">
+            {/* Animated Glow Halo Background */}
+            <div className="absolute -inset-0.5 bg-gradient-to-r from-cyan-400 via-purple-500 to-emerald-400 rounded-3xl blur opacity-60 group-hover:opacity-100 transition duration-500 group-hover:duration-200 animate-pulse" />
+            
+            <button
+              onClick={handleInstallExtension}
+              className="relative w-full flex items-center justify-between p-3.5 sm:p-4 rounded-2xl bg-ink-950/90 hover:bg-ink-900 border border-cyan-400/40 text-left transition-all duration-200 cursor-pointer shadow-xl backdrop-blur-md"
+            >
+              <div className="flex items-center gap-3.5">
+                <div className="relative flex h-11 w-11 items-center justify-center rounded-2xl bg-cyan-400/15 text-cyan-300 border border-cyan-400/30 group-hover:scale-105 transition-transform shrink-0">
+                  <Chrome size={22} className="text-cyan-400" />
+                  <span className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-cyan-400 text-ink-950">
+                    <Download size={10} strokeWidth={3} />
+                  </span>
+                </div>
+
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm sm:text-base font-bold text-white tracking-tight group-hover:text-cyan-300 transition-colors">
+                      Install Extension
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full bg-gradient-to-r from-cyan-400/20 to-purple-400/20 border border-cyan-400/30 text-[10px] font-bold text-cyan-300 uppercase tracking-wider flex items-center gap-1">
+                      <Sparkles size={10} /> Chrome
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-white/50 mt-0.5 leading-snug">
+                    Use directly on YouTube Shorts & Instagram Reels
+                  </p>
+                </div>
+              </div>
+
+              <div className="hidden sm:flex items-center gap-1 text-xs font-bold text-cyan-300 bg-cyan-400/10 px-3 py-1.5 rounded-xl border border-cyan-400/20 group-hover:bg-cyan-400 group-hover:text-ink-950 transition-all shrink-0">
+                <span>Get ZIP</span>
+                <Download size={13} />
+              </div>
+            </button>
+          </div>
         </section>
       </main>
 
@@ -222,6 +273,12 @@ export default function HomePage({ onEnterFeed }: Props) {
       <CreditsModal
         isOpen={isCreditsOpen}
         onClose={() => setIsCreditsOpen(false)}
+      />
+
+      {/* Chrome Extension Step-by-Step Installation Modal */}
+      <ExtensionInstallModal
+        isOpen={isExtensionModalOpen}
+        onClose={() => setIsExtensionModalOpen(false)}
       />
 
       {/* Debug Panel */}

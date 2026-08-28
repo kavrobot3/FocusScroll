@@ -1,101 +1,193 @@
 // Real-time Global Extension Download Counter Engine
-// Anchored base of 37, incrementing every 1 second globally and synchronized across the world
+// Connects to public global counter API, checks every second for worldwide updates,
+// and increments globally whenever anyone clicks to install/download the extension.
 
-const STORAGE_EXTRA_KEY = 'fs_user_extra_downloads';
-const BASE_COUNT = 37;
+const API_BASE = 'https://countapi.mileshilliard.com/api/v1';
+const COUNTER_KEY = 'focus_shorts_extension_downloads_v1';
+const LOCAL_CACHE_KEY = 'fs_global_cached_downloads_v1';
+const BASE_MIN_COUNT = 37;
 
-// Fixed global epoch anchor so every client in the world computes the exact same global second ticks
-const GLOBAL_ANCHOR_EPOCH = 1787883566000;
+// Internal memory state
+let currentGlobalCount = BASE_MIN_COUNT;
+let hasInitialized = false;
 
+// Cross-tab synchronization channel
 const channel = typeof window !== 'undefined' && 'BroadcastChannel' in window
   ? new BroadcastChannel('fs_extension_downloads_sync')
   : null;
 
-function getLocalExtraDownloads(): number {
-  if (typeof window === 'undefined') return 0;
+// Initialize cache from local storage if available
+if (typeof window !== 'undefined') {
   try {
-    const saved = localStorage.getItem(STORAGE_EXTRA_KEY);
-    if (!saved) return 0;
-    const parsed = parseInt(saved, 10);
-    return isNaN(parsed) || parsed < 0 ? 0 : parsed;
+    const saved = localStorage.getItem(LOCAL_CACHE_KEY);
+    if (saved) {
+      const parsed = parseInt(saved, 10);
+      if (!isNaN(parsed) && parsed >= BASE_MIN_COUNT) {
+        currentGlobalCount = parsed;
+      }
+    }
   } catch {
-    return 0;
+    // Ignore storage read errors
   }
 }
 
 /**
  * Gets the current synchronized global total downloads
- * Starts at 37 and increments by 1 every second for everyone globally, plus local user downloads
  */
 export function getExtensionDownloadCount(): number {
-  if (typeof window === 'undefined') return BASE_COUNT;
-  const now = Date.now();
-  const elapsedSeconds = Math.max(0, Math.floor((now - GLOBAL_ANCHOR_EPOCH) / 1000));
-  const extra = getLocalExtraDownloads();
-  return BASE_COUNT + elapsedSeconds + extra;
+  return Math.max(BASE_MIN_COUNT, currentGlobalCount);
 }
 
 /**
- * Increments the live download counter on direct user download action and broadcasts across tabs
+ * Fetches the latest global count from the worldwide counter API
+ */
+async function fetchGlobalCount(): Promise<number> {
+  if (typeof window === 'undefined') return currentGlobalCount;
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 1200);
+
+    const res = await fetch(`${API_BASE}/get/${COUNTER_KEY}`, {
+      signal: controller.signal,
+      headers: { Accept: 'application/json' },
+    });
+    clearTimeout(timeoutId);
+
+    if (res.ok) {
+      const data = await res.json();
+      if (typeof data.value === 'number') {
+        const remoteValue = Math.max(BASE_MIN_COUNT, data.value);
+        if (remoteValue !== currentGlobalCount) {
+          const isHigher = remoteValue > currentGlobalCount;
+          currentGlobalCount = remoteValue;
+          try {
+            localStorage.setItem(LOCAL_CACHE_KEY, String(currentGlobalCount));
+          } catch {
+            // Ignore storage write error
+          }
+          notifyListeners(currentGlobalCount, isHigher && hasInitialized);
+        }
+        hasInitialized = true;
+        return currentGlobalCount;
+      }
+    } else if (res.status === 404) {
+      // If key doesn't exist yet, initialize to BASE_MIN_COUNT
+      await fetch(`${API_BASE}/set/${COUNTER_KEY}?value=${BASE_MIN_COUNT}`).catch(() => {});
+    }
+  } catch {
+    // Silently fall back to cached count if network is intermittent
+  }
+
+  return currentGlobalCount;
+}
+
+/**
+ * Helper to dispatch update events to UI and other tabs
+ */
+function notifyListeners(count: number, isManualOrNew: boolean) {
+  if (typeof window === 'undefined') return;
+
+  // Custom event for same-tab reactive listeners
+  window.dispatchEvent(
+    new CustomEvent('fs_download_increment', {
+      detail: { count, isManualDownload: isManualOrNew, timestamp: Date.now() },
+    })
+  );
+
+  // Broadcast to other open browser tabs
+  if (channel && isManualOrNew) {
+    channel.postMessage({ type: 'INCREMENT', count, isManualDownload: true, timestamp: Date.now() });
+  }
+}
+
+/**
+ * Increments the global download counter on user download action and updates worldwide count
  */
 export function recordExtensionDownload(): number {
-  const currentExtra = getLocalExtraDownloads();
-  const nextExtra = currentExtra + 1;
+  // 1. Optimistically increment locally right away for instant feedback
+  currentGlobalCount = Math.max(BASE_MIN_COUNT, currentGlobalCount + 1);
   
   if (typeof window !== 'undefined') {
     try {
-      localStorage.setItem(STORAGE_EXTRA_KEY, String(nextExtra));
-      
-      const total = getExtensionDownloadCount();
-      
-      // Dispatch custom window event for in-tab reactivity
-      window.dispatchEvent(
-        new CustomEvent('fs_download_increment', {
-          detail: { count: total, isManualDownload: true, timestamp: Date.now() },
-        })
-      );
-
-      // Broadcast across multiple browser tabs
-      if (channel) {
-        channel.postMessage({ type: 'INCREMENT', count: total, isManualDownload: true, timestamp: Date.now() });
-      }
-    } catch (e) {
-      console.warn('Could not persist extra download count:', e);
+      localStorage.setItem(LOCAL_CACHE_KEY, String(currentGlobalCount));
+    } catch {
+      // Ignore
     }
+    notifyListeners(currentGlobalCount, true);
   }
 
-  return getExtensionDownloadCount();
+  // 2. Hit the global counter API to permanently increment worldwide
+  if (typeof window !== 'undefined') {
+    fetch(`${API_BASE}/hit/${COUNTER_KEY}`, {
+      headers: { Accept: 'application/json' },
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && typeof data.value === 'number') {
+          const verified = Math.max(BASE_MIN_COUNT, data.value);
+          if (verified > currentGlobalCount) {
+            currentGlobalCount = verified;
+            try {
+              localStorage.setItem(LOCAL_CACHE_KEY, String(currentGlobalCount));
+            } catch {
+              // Ignore
+            }
+            notifyListeners(currentGlobalCount, true);
+          }
+        }
+      })
+      .catch((err) => {
+        console.warn('Could not increment global counter via API:', err);
+      });
+  }
+
+  return currentGlobalCount;
 }
 
 /**
- * Subscribes a callback to live counter updates (triggers every second for global tick, and instantly on downloads)
+ * Subscribes a callback to live counter updates
+ * Checks every 1 second (1000ms) with the global database and updates whenever anyone in the world downloads
  */
 export function subscribeToDownloadCount(
   callback: (count: number, isManualDownload: boolean) => void
 ): () => void {
   if (typeof window === 'undefined') return () => {};
 
-  // Global 1-second synchronized world tick interval
-  const tickInterval = setInterval(() => {
-    callback(getExtensionDownloadCount(), false);
+  // Immediate callback with current cached count
+  callback(getExtensionDownloadCount(), false);
+
+  // Initial fetch from global server
+  fetchGlobalCount().then((cnt) => callback(cnt, false));
+
+  // Poll the global counter every 1 second
+  const pollInterval = setInterval(() => {
+    fetchGlobalCount().then((cnt) => {
+      callback(cnt, false);
+    });
   }, 1000);
 
   const handleCustomEvent = (e: Event) => {
     const customEvent = e as CustomEvent<{ count: number; isManualDownload?: boolean }>;
-    if (customEvent.detail?.count) {
+    if (typeof customEvent.detail?.count === 'number') {
       callback(customEvent.detail.count, !!customEvent.detail.isManualDownload);
     }
   };
 
   const handleStorageEvent = (e: StorageEvent) => {
-    if (e.key === STORAGE_EXTRA_KEY) {
-      callback(getExtensionDownloadCount(), true);
+    if (e.key === LOCAL_CACHE_KEY && e.newValue) {
+      const parsed = parseInt(e.newValue, 10);
+      if (!isNaN(parsed)) {
+        currentGlobalCount = Math.max(currentGlobalCount, parsed);
+        callback(currentGlobalCount, true);
+      }
     }
   };
 
   const handleChannelMessage = (event: MessageEvent) => {
     if (event.data?.type === 'INCREMENT' && typeof event.data.count === 'number') {
-      callback(event.data.count, !!event.data.isManualDownload);
+      currentGlobalCount = Math.max(currentGlobalCount, event.data.count);
+      callback(currentGlobalCount, !!event.data.isManualDownload);
     }
   };
 
@@ -106,7 +198,7 @@ export function subscribeToDownloadCount(
   }
 
   return () => {
-    clearInterval(tickInterval);
+    clearInterval(pollInterval);
     window.removeEventListener('fs_download_increment', handleCustomEvent);
     window.removeEventListener('storage', handleStorageEvent);
     if (channel) {
@@ -114,4 +206,3 @@ export function subscribeToDownloadCount(
     }
   };
 }
-

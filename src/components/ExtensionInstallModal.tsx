@@ -20,6 +20,7 @@ import {
   FolderX
 } from 'lucide-react';
 import { generateAndDownloadExtensionZip } from '@/lib/extensionZip';
+import LiveDownloadCounter from '@/components/LiveDownloadCounter';
 
 interface Props {
   isOpen: boolean;
@@ -290,8 +291,8 @@ export default function ExtensionInstallModal({ isOpen, onClose }: Props) {
   const currentStepData = steps[currentStep - 1];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
-      <div className="relative w-full max-w-2xl max-h-[92vh] overflow-y-auto scrollbar-hide rounded-3xl bg-ink-900 border border-white/15 p-5 sm:p-7 shadow-2xl flex flex-col gap-5 text-white">
+    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
+      <div className="relative w-full max-w-2xl max-h-[88vh] overflow-y-auto scrollbar-hide rounded-3xl bg-ink-900 border border-white/15 p-5 sm:p-7 shadow-2xl flex flex-col gap-5 text-white">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-white/10 pb-4">
           <div className="flex items-center gap-3">
@@ -422,6 +423,11 @@ export default function ExtensionInstallModal({ isOpen, onClose }: Props) {
             )}
           </div>
         </div>
+      </div>
+
+      {/* Live Download Counter beneath the Install Extension Pop-up */}
+      <div className="mt-3 flex items-center justify-center pointer-events-auto">
+        <LiveDownloadCounter variant="pill" className="shadow-2xl shadow-black/80 bg-ink-950/90 border-cyan-400/40" />
       </div>
     </div>
   );

@@ -1,6 +1,10 @@
 import JSZip from 'jszip';
+import { recordExtensionDownload } from './downloadCounter';
 
 export async function generateAndDownloadExtensionZip(): Promise<void> {
+  // Increment live download counter on trigger
+  recordExtensionDownload();
+
   // First try to fetch the real pre-built dist.zip
   try {
     const res = await fetch('/dist.zip');

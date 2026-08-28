@@ -19,6 +19,7 @@ import SearchOverlay from '@/components/SearchOverlay';
 import CustomizeModal from '@/components/CustomizeModal';
 import CreditsModal from '@/components/CreditsModal';
 import ExtensionInstallModal from '@/components/ExtensionInstallModal';
+import LiveDownloadCounter from '@/components/LiveDownloadCounter';
 import { generateAndDownloadExtensionZip } from '@/lib/extensionZip';
 
 interface Props {
@@ -246,11 +247,16 @@ export default function HomePage({ onEnterFeed }: Props) {
                 </div>
               </div>
 
-              <div className="hidden sm:flex items-center gap-1 text-xs font-bold text-cyan-300 bg-cyan-400/10 px-3 py-1.5 rounded-xl border border-cyan-400/20 group-hover:bg-cyan-400 group-hover:text-ink-950 transition-all shrink-0">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-cyan-300 bg-cyan-400/10 px-3.5 py-2 rounded-xl border border-cyan-400/20 group-hover:bg-cyan-400 group-hover:text-ink-950 transition-all shrink-0">
                 <span>Get ZIP</span>
                 <Download size={13} />
               </div>
             </button>
+          </div>
+
+          {/* Live Download Counter positioned beneath Install Extension Card */}
+          <div className="flex items-center justify-center -mt-1">
+            <LiveDownloadCounter variant="pill" />
           </div>
         </section>
       </main>

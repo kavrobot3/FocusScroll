@@ -17,19 +17,21 @@ export default function LiveDownloadCounter({ variant = 'pill', className = '', 
     // Initial sync
     setCount(getExtensionDownloadCount());
 
-    // Subscribe to cross-tab / local increments triggered by actual downloads
-    const unsubscribe = subscribeToDownloadCount((newCount) => {
+    // Subscribe to global 1-second ticks & manual download increments
+    const unsubscribe = subscribeToDownloadCount((newCount, isManual) => {
       setCount(newCount);
-      setHasIncremented(true);
-      setPulse(true);
+      if (isManual) {
+        setHasIncremented(true);
+        setPulse(true);
 
-      const t1 = setTimeout(() => setHasIncremented(false), 2400);
-      const t2 = setTimeout(() => setPulse(false), 1200);
+        const t1 = setTimeout(() => setHasIncremented(false), 2400);
+        const t2 = setTimeout(() => setPulse(false), 1200);
 
-      return () => {
-        clearTimeout(t1);
-        clearTimeout(t2);
-      };
+        return () => {
+          clearTimeout(t1);
+          clearTimeout(t2);
+        };
+      }
     });
 
     return () => {

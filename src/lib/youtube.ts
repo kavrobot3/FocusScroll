@@ -7,6 +7,7 @@ export interface YTVideo {
   durationSec: number;
   thumbnail: string;
   embeddable?: boolean;
+  searchTopic?: string;
 }
 
 interface CacheEntry {

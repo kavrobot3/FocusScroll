@@ -3,6 +3,7 @@ import { Home, PlayCircle, BarChart3 } from 'lucide-react';
 import HomePage from '@/pages/HomePage';
 import ShortsFeed from '@/pages/ShortsFeed';
 import StatsPage from '@/pages/StatsPage';
+import IntroGuideModal from '@/components/IntroGuideModal';
 import { seedData, initAppTheme } from '@/lib/storage';
 import { initCustomTheme } from '@/lib/theme';
 import { initNetworkSpeedDetection } from '@/lib/network';
@@ -15,6 +16,14 @@ export default function App() {
   const [tab, setTab] = useState<Tab>('home');
   const [inFeed, setInFeed] = useState(false);
   const [activeTopic, setActiveTopic] = useState<string | undefined>(undefined);
+  const [isGuideOpen, setIsGuideOpen] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      return localStorage.getItem('fs_skip_intro_popup') !== 'true';
+    } catch {
+      return true;
+    }
+  });
 
   useEffect(() => {
     initCustomTheme();
@@ -55,6 +64,7 @@ export default function App() {
                 <HomePage
                   onEnterFeed={(topic) => enterFeed(topic)}
                   onOpenStats={() => setTab('stats')}
+                  onOpenGuide={() => setIsGuideOpen(true)}
                 />
               )}
               {tab === 'stats' && <StatsPage onEnterFeed={() => enterFeed()} />}
@@ -62,9 +72,9 @@ export default function App() {
           )}
         </div>
 
-        {/* Bottom nav */}
+        {/* Bottom nav - exactly 3 pages: Home, Feed, Stats */}
         {!inFeed && (
-          <nav className="shrink-0 z-30 flex items-center justify-around border-t border-white/10 bg-surface-container-low/90 backdrop-blur-xl py-3 px-6">
+          <nav className="shrink-0 z-30 flex items-center justify-around border-t border-white/10 bg-surface-container-low/90 backdrop-blur-xl py-3 px-4">
             <NavButton
               icon={<Home size={20} />}
               label="Home"
@@ -85,6 +95,16 @@ export default function App() {
             />
           </nav>
         )}
+
+        {/* Startup Guide Modal */}
+        <IntroGuideModal
+          isOpen={isGuideOpen}
+          onClose={() => setIsGuideOpen(false)}
+          onStartScroll={() => {
+            setIsGuideOpen(false);
+            enterFeed();
+          }}
+        />
       </div>
     </div>
   );

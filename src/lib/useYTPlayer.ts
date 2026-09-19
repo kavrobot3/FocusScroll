@@ -64,6 +64,23 @@ export interface YTPlayerControls {
   toggleMute: () => void;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type YTPlayer = any;
+
+interface YTPlayerEvent {
+  target: {
+    stopVideo: () => void;
+    destroy: () => void;
+    pauseVideo: () => void;
+    playVideo: () => void;
+    seekTo: (sec: number, allowSeekAhead?: boolean) => void;
+    mute: () => void;
+    unMute: () => void;
+    setVolume: (v: number) => void;
+  };
+  data?: number;
+}
+
 export function useYTPlayer(
   containerRef: React.RefObject<HTMLDivElement | null>,
   options: UseYTPlayerOptions
@@ -119,7 +136,9 @@ export function useYTPlayer(
         const quality = getRecommendedQuality();
         const originParam = typeof window !== 'undefined' ? window.location.origin : undefined;
 
-        createdPlayer = new YT.Player(el, {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const YTObj = YT as any;
+        createdPlayer = new YTObj.Player(el, {
           videoId: options.videoId,
           host: 'https://www.youtube.com',
           playerVars: {
@@ -139,7 +158,7 @@ export function useYTPlayer(
             origin: originParam,
           },
           events: {
-            onReady: (e) => {
+            onReady: (e: YTPlayerEvent) => {
               clearTimeout(watchdog);
               if (cancelled) {
                 try {
@@ -171,14 +190,14 @@ export function useYTPlayer(
               setReady(true);
               onReadyRef.current?.();
             },
-            onError: (e) => {
+            onError: (e: YTPlayerEvent) => {
               clearTimeout(watchdog);
               if (cancelled) return;
               console.warn('YouTube Player error code:', e?.data);
               setFailed(true);
               onErrorRef.current?.();
             },
-            onStateChange: (e) => {
+            onStateChange: (e: YTPlayerEvent) => {
               if (cancelled) return;
               // 1: PLAYING, 2: PAUSED, 0: ENDED, 3: BUFFERING
               if (e.data === 1) {
@@ -244,7 +263,7 @@ export function useYTPlayer(
   useEffect(() => {
     const p = playerRef.current;
     if (!p || !ready) return;
-    let playWatchdog: NodeJS.Timeout | null = null;
+    let playWatchdog: ReturnType<typeof setTimeout> | null = null;
 
     try {
       if (options.active) {

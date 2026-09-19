@@ -51,7 +51,7 @@ export default function ShortsFeed({ onExit, initialTopic }: Props) {
 
   const activeWatchSecRef = useRef<number>(0);
   const isPlayingRef = useRef<boolean>(false);
-  const lockNoticeTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const lockNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const screenStartRef = useRef<number>(Date.now());
   const isScrollingRef = useRef(false);
